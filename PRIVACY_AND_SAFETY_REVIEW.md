@@ -4,8 +4,8 @@ Reviewed: 2026-07-28. This is an engineering review of the current prototype, no
 
 ## Current safeguards
 
-- No analytics, advertising SDK, generative-AI integration, remote API, database, or committed secret is present.
-- Domain helpers require an active owner ID for writes and filter exports and reads by owner. Automated tests cover cross-account read, write, deletion, and export boundaries.
+- No analytics, advertising SDK, generative-AI integration, or committed secret is present.
+- Supabase authentication and database storage are used. Every health-data table has row-level security policies bound to `auth.uid()`, and foreign keys cascade record deletion.
 - The interface explicitly says that the product does not diagnose, screen, treat, or provide medical advice.
 - Support and Safety is available from every primary tab. Its response is static and escapable. It directs a person toward immediate human help without inventing or hard-coding a crisis number.
 - The repository contains fictional display data only. Application code does not log journal, medication, symptom, or check-in content.
@@ -13,8 +13,8 @@ Reviewed: 2026-07-28. This is an engineering review of the current prototype, no
 
 ## Known limitations and risks
 
-- This prototype has no authentication, server, database, or row-level security (RLS). The owner checks are tested domain logic, not a security boundary. RLS therefore cannot be configured or verified yet.
-- Entries shown in the UI are sample content and check-in state is held in memory. It does not persist after restart; sign-in, sign-out, account deletion, and a real user-scoped export UI are not implemented.
+- Security depends on deploying the included migration without modification and keeping RLS enabled. The migration has not been exercised against a live Supabase project in this environment.
+- The export uses the native share sheet and includes records already retrieved under the authenticated session. A formal PDF report is not implemented.
 - The resource directory is intentionally labeled unconfigured. Regional resources require a reviewed, configurable dataset and maintenance process before release.
 - No encryption-at-rest, key management, consent record, retention schedule, audit trail, breach process, backup deletion policy, or verified deletion workflow exists.
 - The UI has not completed assistive-technology, dynamic-type, keyboard, dark-mode, reduced-motion, localization, or device testing because dependencies cannot be downloaded in this environment.
@@ -30,4 +30,4 @@ Reviewed: 2026-07-28. This is an engineering review of the current prototype, no
 
 ## Environment variables
 
-None are currently consumed. When a backend is approved, only public client configuration may appear in an example environment file. Service keys and other secrets must never be bundled into the app or committed.
+`EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY` are required and documented in `.env.example`. These are public client configuration. Service-role keys and other secrets must never be bundled into the app or committed.

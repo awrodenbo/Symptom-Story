@@ -6,10 +6,14 @@ A calming, mobile-first companion for people professionally diagnosed with PMDD 
 
 ```bash
 npm install
+cp .env.example .env
+# Fill in the public Supabase project URL and anonymous key.
 npm run web
 ```
 
 Or use `npm start` to open the Expo development menu for iOS or Android.
+
+Apply `supabase/migrations/202607280001_initial.sql` to a new Supabase project before starting the app. Authentication sessions are stored with React Native Async Storage; application records are stored in Supabase and protected by row-level security. Never place a Supabase service-role key in the app environment.
 
 ## Product safety
 
