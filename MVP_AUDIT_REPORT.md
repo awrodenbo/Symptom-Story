@@ -35,3 +35,10 @@ Reviewed: 2026-07-28
 - Run automated mobile UI tests and manual screen-reader, dynamic-type, keyboard, dark-mode, reduced-motion, and phone-size testing.
 - Configure a reviewed regional crisis-resource dataset. The app intentionally labels this resource directory unavailable until it is configured.
 - Complete legal, clinical, privacy, security, and accessibility review before processing real health information. Do not claim HIPAA compliance based on this implementation.
+
+## Mobile UX refinement
+
+- The daily check-in now uses six focused, optional steps with a progress indicator, persistent Back/Continue controls, and minimal typing. A person can complete it with six selections and one save action.
+- Touch targets are at least 44 points, primary actions are placed at the bottom of each task, destructive actions remain secondary, and the bottom safe area is respected.
+- Check-in and tab transitions use subtle native layout animation while honoring the operating system’s Reduce Motion preference.
+- Form screens avoid keyboard overlap on iOS, preserve taps while the keyboard is open, and expose labels, roles, checked/selected/disabled states, headings, live notices, and text alternatives for chart values to assistive technology.
