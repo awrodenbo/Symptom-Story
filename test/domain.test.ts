@@ -19,7 +19,7 @@ test('creates, edits, and deletes a daily check-in', () => {
   const edited = saveOwnedRecord(created, { ...first, mood: 4 }, alex);
   assert.equal(edited[0].mood, 4);
   assert.deepEqual(deleteOwnedRecord(edited, first.id, alex), []);
-});
+
 
 test('enforces data ownership for reads and writes', () => {
   assert.deepEqual(recordsForOwner([first, { ...first, id: 'check-2', ownerId: sam }], alex), [first]);
