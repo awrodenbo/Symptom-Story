@@ -15,6 +15,8 @@ Or use `npm start` to open the Expo development menu for iOS or Android.
 
 Apply `supabase/migrations/202607280001_initial.sql` to a new Supabase project before starting the app. Authentication sessions are stored with React Native Async Storage; application records are stored in Supabase and protected by row-level security. Never place a Supabase service-role key in the app environment.
 
+For password recovery, add the app's generated root URL to the Supabase Auth redirect allowlist. Production native builds use the `symptomstory://` scheme configured in `app.json`; web deployments use their HTTPS origin. Configure custom SMTP and the desired password policy in Supabase before production release. Test native recovery links with a development or production build rather than Expo Go.
+
 ## Product safety
 
 Symptom Story does not diagnose, screen for, or treat any condition. It is designed to help people record their own experiences and prepare for conversations with licensed healthcare professionals.

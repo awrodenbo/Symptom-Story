@@ -1,60 +1,1501 @@
-import { Ionicons } from '@expo/vector-icons';
-import type { Session } from '@supabase/supabase-js';
-import { useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { addJournal, addMedication, deleteAccountData, deleteCheckIn, deleteJournal, deleteMedication, loadDashboard, logMedication, saveCheckIn, saveProfile, type CheckInRow, type JournalRow, type MedicationRow, type Profile } from '../src/api';
-import { isSupabaseConfigured, supabase } from '../src/supabase';
+import { Ionicons } from "@expo/vector-icons";
+import type { Session } from "@supabase/supabase-js";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  addJournal,
+  addMedication,
+  deleteAccountData,
+  deleteCheckIn,
+  deleteJournal,
+  deleteMedication,
+  loadDashboard,
+  logMedication,
+  saveCheckIn,
+  saveProfile,
+  type CheckInRow,
+  type JournalRow,
+  type MedicationRow,
+  type Profile,
+} from "../src/api";
+import {
+  friendlyAuthError,
+  getCurrentSession,
+  getRecoveryDisplayState,
+  listenForPasswordRecovery,
+  requestPasswordReset,
+  signIn,
+  signOut,
+  signUp,
+  subscribeToAuthChanges,
+  updatePassword,
+} from "../src/auth";
+import { isSupabaseConfigured } from "../src/supabase";
 
-type Tab='Home'|'Check-In'|'Trends'|'Journal'|'Profile';
-const C={ink:'#25342E',muted:'#68766F',moss:'#487263',sage:'#DCEBE3',cream:'#F8F6F0',white:'#FFF',line:'#DFE5E0',danger:'#9A4F54'};
-const tabs:[Tab,keyof typeof Ionicons.glyphMap][]=[['Home','home-outline'],['Check-In','heart-outline'],['Trends','stats-chart-outline'],['Journal','book-outline'],['Profile','person-outline']];
-const symptoms=['Fatigue','Irritability','Anxiety','Low mood','Headache','Cramps'];
+type Tab = "Home" | "Check-In" | "Trends" | "Journal" | "Profile";
+const C = {
+  ink: "#25342E",
+  muted: "#68766F",
+  moss: "#487263",
+  sage: "#DCEBE3",
+  cream: "#F8F6F0",
+  white: "#FFF",
+  line: "#DFE5E0",
+  danger: "#9A4F54",
+};
+const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
+  ["Home", "home-outline"],
+  ["Check-In", "heart-outline"],
+  ["Trends", "stats-chart-outline"],
+  ["Journal", "book-outline"],
+  ["Profile", "person-outline"],
+];
+const symptoms = [
+  "Fatigue",
+  "Irritability",
+  "Anxiety",
+  "Low mood",
+  "Headache",
+  "Cramps",
+];
 
-function Button({label,onPress,secondary=false,disabled=false,icon}:{label:string;onPress:()=>void;secondary?:boolean;disabled?:boolean;icon?:keyof typeof Ionicons.glyphMap}){return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} accessibilityState={{disabled}} hitSlop={4} style={({pressed})=>[s.button,secondary&&s.buttonSecondary,pressed&&s.buttonPressed,disabled&&s.buttonDisabled]}>{icon&&<Ionicons name={icon} size={19} color={secondary?C.moss:C.white}/>}<Text style={[s.buttonText,secondary&&{color:C.moss}]}>{label}</Text></Pressable>}
-function Card({children}:{children:React.ReactNode}){return <View style={s.card}>{children}</View>}
-function Field({label,...props}:{label:string}&React.ComponentProps<typeof TextInput>){return <View style={s.field}><Text style={s.label}>{label}</Text><TextInput accessibilityLabel={label} placeholderTextColor="#89958E" style={[s.input,props.multiline&&{minHeight:110,textAlignVertical:'top'}]} {...props}/></View>}
-function Busy(){return <View style={s.center}><ActivityIndicator size="large" color={C.moss}/><Text style={s.muted}>Loading your story…</Text></View>}
-function Notice({text,error=false}:{text:string;error?:boolean}){return <View accessibilityLiveRegion="polite" style={[s.notice,error&&{backgroundColor:'#F6E6E5'}]}><Text style={[s.noticeText,error&&{color:C.danger}]}>{text}</Text></View>}
-
-function Auth(){const[email,setEmail]=useState('');const[password,setPassword]=useState('');const[mode,setMode]=useState<'signIn'|'signUp'>('signIn');const[busy,setBusy]=useState(false);const[msg,setMsg]=useState('');async function submit(){setBusy(true);setMsg('');const action=mode==='signIn'?supabase.auth.signInWithPassword({email:email.trim(),password}):supabase.auth.signUp({email:email.trim(),password});const{error}=await action;setBusy(false);if(error)setMsg(error.message);else if(mode==='signUp')setMsg('Check your email to confirm your account, then sign in.');}
-return <ScrollView contentContainerStyle={s.auth}><View style={s.brand}><View style={s.brandIcon}><Ionicons name="heart" size={32} color={C.white}/></View><Text style={s.title}>Symptom Story</Text><Text style={s.subtitle}>A private place for your daily health story.</Text></View>{!isSupabaseConfigured&&<Notice error text="Supabase is not configured. Add the EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY environment variables."/>}<Card><Text accessibilityRole="header" style={s.heading}>{mode==='signIn'?'Welcome back':'Create your account'}</Text><Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email"/><Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete={mode==='signIn'?'current-password':'new-password'}/>{msg&&<Notice text={msg} error={msg.toLowerCase().includes('error')||msg.toLowerCase().includes('invalid')}/>}<Button disabled={busy||!email||password.length<6||!isSupabaseConfigured} label={busy?'Please wait…':mode==='signIn'?'Sign in':'Create account'} onPress={submit}/><Button secondary label={mode==='signIn'?'New here? Create an account':'Already have an account? Sign in'} onPress={()=>{setMode(mode==='signIn'?'signUp':'signIn');setMsg('')}}/></Card></ScrollView>}
-
-function Onboarding({userId,onDone}:{userId:string;onDone:(p:Profile)=>void}){const[name,setName]=useState('');const[tracking,setTracking]=useState<'pmdd'|'postpartum'>('pmdd');const[busy,setBusy]=useState(false);const[error,setError]=useState('');async function submit(){setBusy(true);setError('');try{await saveProfile(userId,{display_name:name.trim(),tracking_mode:tracking});onDone({display_name:name.trim(),tracking_mode:tracking,onboarding_complete:true})}catch(e){setError(e instanceof Error?e.message:'Unable to save your profile.')}finally{setBusy(false)}}return <ScrollView contentContainerStyle={s.auth}><Text style={s.kicker}>WELCOME</Text><Text style={s.title}>Make this space yours</Text><Text style={s.subtitle}>You can change these preferences later.</Text><Card><Field label="What should we call you?" value={name} onChangeText={setName} maxLength={80}/><Text style={s.label}>What would you like to track?</Text>{([['pmdd','PMDD'],['postpartum','Postpartum depression']] as const).map(([value,label])=><Pressable accessibilityRole="radio" accessibilityState={{checked:tracking===value}} onPress={()=>setTracking(value)} key={value} style={[s.choice,tracking===value&&s.choiceOn]}><Ionicons name={tracking===value?'radio-button-on':'radio-button-off'} size={23} color={C.moss}/><Text style={s.choiceText}>{label}</Text></Pressable>)}{error&&<Notice error text={error}/>}<Button disabled={!name.trim()||busy} label={busy?'Saving…':'Continue'} onPress={submit}/></Card></ScrollView>}
-
-function CheckIn({userId,existing,onSaved,onSupport,reducedMotion}:{userId:string;existing?:CheckInRow;onSaved:()=>void;onSupport:()=>void;reducedMotion:boolean}) {
-  const [step,setStep]=useState(0);
-  const [mood,setMood]=useState(existing?.mood??3);
-  const [sleep,setSleep]=useState(existing?.sleep??3);
-  const [energy,setEnergy]=useState(existing?.energy??3);
-  const [selected,setSelected]=useState<string[]>(existing?.symptoms??[]);
-  const [med,setMed]=useState<boolean|null>(existing?.medication_taken??null);
-  const [reflection,setReflection]=useState(existing?.reflection??'');
-  const [busy,setBusy]=useState(false);
-  const [error,setError]=useState('');
-  const sections=['Mood','Sleep','Energy','Symptoms','Medication','Reflection'];
-  function move(next:number){if(!reducedMotion)LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);setStep(next)}
-  async function save(){setBusy(true);setError('');try{await saveCheckIn(userId,{mood,sleep,energy,symptoms:selected,medication_taken:med,reflection:reflection.trim()||null});onSaved()}catch(e){setError(e instanceof Error?e.message:'Unable to save check-in.')}finally{setBusy(false)}}
-  const scale=(label:string,value:number,setter:(value:number)=>void)=><View style={s.scale}>{[1,2,3,4,5].map(n=><Pressable accessibilityRole="radio" accessibilityLabel={`${label} ${n} out of 5`} accessibilityState={{checked:value===n}} onPress={()=>setter(n)} key={n} style={[s.scaleItem,value===n&&s.scaleOn]}><Text style={[s.scaleText,value===n&&{color:C.white}]}>{n}</Text></Pressable>)}</View>;
-  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}><ScrollView contentContainerStyle={s.checkScroll} keyboardShouldPersistTaps="handled">
-    <View style={s.checkHeader}><Text style={s.kicker}>CHECK-IN · {step+1} OF {sections.length}</Text><Text accessibilityRole="header" style={s.title}>{sections[step]}</Text><View accessibilityLabel={`${step+1} of ${sections.length} completed`} style={s.progress}><View style={[s.progressFill,{width:`${((step+1)/sections.length)*100}%`}]}/></View></View>
-    <Card>{step===0?<><Text style={s.prompt}>How does today feel?</Text>{scale('Mood',mood,setMood)}<Text style={s.scaleHint}>1 · Very difficult　　　　　　　　　5 · Very good</Text></>:step===1?<><Text style={s.prompt}>How restorative was your sleep?</Text>{scale('Sleep',sleep,setSleep)}</>:step===2?<><Text style={s.prompt}>How is your energy?</Text>{scale('Energy',energy,setEnergy)}</>:step===3?<><Text style={s.prompt}>What would you like to remember?</Text><View style={s.wrap}>{symptoms.map(x=><Pressable accessibilityRole="checkbox" key={x} onPress={()=>setSelected(selected.includes(x)?selected.filter(y=>y!==x):[...selected,x])} style={[s.chip,selected.includes(x)&&s.chipOn]} accessibilityState={{checked:selected.includes(x)}}><Text style={s.chipText}>{x}</Text></Pressable>)}</View></>:step===4?<><Text style={s.prompt}>Medication taken as planned?</Text><View style={s.choiceStack}>{([[true,'Yes'],[false,'No']] as const).map(([value,label])=><Pressable key={label} accessibilityRole="radio" accessibilityState={{checked:med===value}} onPress={()=>setMed(value)} style={[s.choice,med===value&&s.choiceOn]}><Ionicons name={med===value?'radio-button-on':'radio-button-off'} size={23} color={C.moss}/><Text style={s.choiceText}>{label}</Text></Pressable>)}</View><Pressable onPress={()=>setMed(null)} style={s.textButton}><Text style={s.textButtonLabel}>Not applicable</Text></Pressable></>:<><Text style={s.prompt}>What helped or felt heavy?</Text><Field label="Optional private reflection" multiline value={reflection} maxLength={2000} placeholder="A few words is enough…" onChangeText={value=>{setReflection(value);if(/suicid|self[- ]?harm|can't stay safe|cannot remain safe|harm someone|hallucinat|disorient/i.test(value))onSupport()}}/><Text style={s.muted}>{reflection.length}/2000</Text></>}</Card>
-    {error&&<Notice error text={error}/>}<View style={s.footerActions}>{step>0&&<Button secondary label="Back" onPress={()=>move(step-1)}/>}<Button disabled={busy} label={busy?'Saving…':step===sections.length-1?'Save check-in':'Continue'} icon={step===sections.length-1?'checkmark':'arrow-forward'} onPress={()=>step===sections.length-1?save():move(step+1)}/></View>{step<sections.length-1&&<Pressable accessibilityRole="button" onPress={()=>move(step+1)} style={s.textButton}><Text style={s.textButtonLabel}>Skip this question</Text></Pressable>}
-  </ScrollView></KeyboardAvoidingView>
+function Button({
+  label,
+  onPress,
+  secondary = false,
+  disabled = false,
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  secondary?: boolean;
+  disabled?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={disabled}
+      onPress={onPress}
+      accessibilityState={{ disabled }}
+      hitSlop={4}
+      style={({ pressed }) => [
+        s.button,
+        secondary && s.buttonSecondary,
+        pressed && s.buttonPressed,
+        disabled && s.buttonDisabled,
+      ]}
+    >
+      {icon && (
+        <Ionicons name={icon} size={19} color={secondary ? C.moss : C.white} />
+      )}
+      <Text style={[s.buttonText, secondary && { color: C.moss }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
 }
-function Safety({close}:{close:()=>void}){return <ScrollView contentContainerStyle={s.scroll}><Button secondary label="Close" icon="close" onPress={close}/><Text style={s.kicker}>SUPPORT AND SAFETY</Text><Text style={s.title}>You deserve human support</Text><Card><Text accessibilityRole="header" style={s.heading}>If you may act on thoughts of harming yourself or someone else, cannot remain safe, or feel severely disoriented, seek immediate help now.</Text><Text style={s.body}>Contact local emergency services or go to the nearest emergency department. If possible, tell a trusted support person what is happening and ask them to stay with you.</Text></Card><Card><Text accessibilityRole="header" style={s.heading}>Regional resources unavailable</Text><Text style={s.body}>Verified regional resources have not been configured. No unverified phone number is shown.</Text></Card><Text style={s.muted}>This is a static safety response, not medical advice or an AI-generated response. You may leave at any time.</Text></ScrollView>}
+function Card({ children }: { children: React.ReactNode }) {
+  return <View style={s.card}>{children}</View>;
+}
+function Field({
+  label,
+  ...props
+}: { label: string } & React.ComponentProps<typeof TextInput>) {
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <TextInput
+        accessibilityLabel={label}
+        placeholderTextColor="#89958E"
+        style={[
+          s.input,
+          props.multiline && { minHeight: 110, textAlignVertical: "top" },
+        ]}
+        {...props}
+      />
+    </View>
+  );
+}
+function Busy() {
+  return (
+    <View style={s.center}>
+      <ActivityIndicator size="large" color={C.moss} />
+      <Text style={s.muted}>Loading your story…</Text>
+    </View>
+  );
+}
+function Notice({ text, error = false }: { text: string; error?: boolean }) {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      style={[s.notice, error && { backgroundColor: "#F6E6E5" }]}
+    >
+      <Text style={[s.noticeText, error && { color: C.danger }]}>{text}</Text>
+    </View>
+  );
+}
 
-export default function App(){const[session,setSession]=useState<Session|null>(null);const[loading,setLoading]=useState(true);const[data,setData]=useState<Awaited<ReturnType<typeof loadDashboard>>|null>(null);const[tab,setTab]=useState<Tab>('Home');const[safety,setSafety]=useState(false);const[message,setMessage]=useState('');const[error,setError]=useState('');const[reducedMotion,setReducedMotion]=useState(false);const {width}=useWindowDimensions();
-useEffect(()=>{AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);const listener=AccessibilityInfo.addEventListener('reduceMotionChanged',setReducedMotion);return()=>listener.remove()},[]);
-useEffect(()=>{supabase.auth.getSession().then(({data})=>{setSession(data.session);setLoading(false)});const{data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);if(!next)setData(null)});return()=>subscription.unsubscribe()},[]);
-async function refresh(){if(!session)return;setLoading(true);setError('');try{setData(await loadDashboard(session.user.id))}catch(e){setError(e instanceof Error?e.message:'Unable to load your data.')}finally{setLoading(false)}}useEffect(()=>{if(session)refresh()},[session]);
-const today=data?.checkIns.find(x=>x.entry_date===new Date().toISOString().slice(0,10));
-if(loading)return <Busy/>;if(!session)return <SafeAreaView style={[s.app,{maxWidth:Math.min(width,520)}]}><Auth/></SafeAreaView>;if(!data)return <SafeAreaView style={s.app}>{error?<View style={s.center}><Notice error text={error}/><Button label="Try again" onPress={refresh}/></View>:<Busy/>}</SafeAreaView>;if(!data.profile?.onboarding_complete)return <SafeAreaView style={s.app}><Onboarding userId={session.user.id} onDone={()=>refresh()}/></SafeAreaView>;
-const profile=data.profile;async function action(work:()=>Promise<unknown>,success:string){setError('');try{await work();setMessage(success);await refresh()}catch(e){setError(e instanceof Error?e.message:'Something went wrong.')}}
-let body:React.ReactNode;if(safety)body=<Safety close={()=>setSafety(false)}/>;else if(tab==='Check-In')body=<CheckIn userId={session.user.id} existing={today} onSupport={()=>setSafety(true)} reducedMotion={reducedMotion} onSaved={()=>{setMessage('Your check-in was saved.');setTab('Home');refresh()}}/>;else if(tab==='Home')body=<ScrollView contentContainerStyle={s.scroll}><Text style={s.kicker}>TODAY</Text><Text style={s.title}>Hello, {profile.display_name}</Text><Text style={s.subtitle}>A small moment for yourself is enough.</Text>{message&&<Notice text={message}/>} {error&&<Notice error text={error}/>}<Card><Text accessibilityRole="header" style={s.heading}>{today?'Today’s check-in is saved':'How are you feeling?'}</Text><Text style={s.body}>{today?`Mood ${today.mood} of 5 · ${today.symptoms.length} symptoms recorded`:'A gentle check-in takes about two minutes.'}</Text><Button label={today?'View or edit entry':'Start check-in'} onPress={()=>setTab('Check-In')}/>{today&&<Button secondary label="Delete today’s entry" onPress={()=>Alert.alert('Delete check-in?','This cannot be undone.',[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:()=>action(()=>deleteCheckIn(today.id),'Check-in deleted.')}])}/>}</Card><Card><Text accessibilityRole="header" style={s.heading}>Medications</Text>{data.medications.length?<Text style={s.body}>{data.medications.length} active medication{data.medications.length===1?'':'s'}</Text>:<Text style={s.muted}>No medications added yet.</Text>}<Button secondary label="Manage medications" onPress={()=>setTab('Profile')}/></Card></ScrollView>;else if(tab==='Trends'){const recent=[...data.checkIns].reverse().slice(-14);const average=recent.length?(recent.reduce((n,x)=>n+x.mood,0)/recent.length).toFixed(1):null;body=<ScrollView contentContainerStyle={s.scroll}><Text style={s.kicker}>YOUR RECORDS</Text><Text style={s.title}>Trends</Text>{!recent.length?<Card><Text accessibilityRole="header" style={s.heading}>No trends yet</Text><Text style={s.body}>Complete a check-in to begin seeing your recorded history.</Text></Card>:<><Card><Text accessibilityRole="header" style={s.heading}>Mood average: {average} of 5</Text><Text style={s.body}>Based on {recent.length} self-reported check-in{recent.length===1?'':'s'}. This is a record summary, not a medical interpretation.</Text><View style={s.chart}>{recent.map(x=><View accessible key={x.id} style={[s.bar,{height:16+x.mood*18}]} accessibilityLabel={`${x.entry_date}: mood ${x.mood} of 5`}/>)}</View></Card>{recent.map(x=><Card key={x.id}><Text accessibilityRole="header" style={s.heading}>{x.entry_date} · Mood {x.mood}/5</Text><Text style={s.body}>{x.symptoms.length?x.symptoms.join(', '):'No symptoms recorded'}</Text></Card>)}</>}</ScrollView>}else if(tab==='Journal'){body=<JournalScreen userId={session.user.id} entries={data.journal} run={action}/>}else body=<ProfileScreen userId={session.user.id} profile={profile} medications={data.medications} checkIns={data.checkIns} journal={data.journal} run={action}/>;
-return <View style={s.shell}><SafeAreaView style={[s.app,{maxWidth:Math.min(width,520)}]} edges={['top','bottom']}><View style={{flex:1}}>{message&&tab!=='Home'&&<View style={s.banner}><Notice text={message}/></View>}{error&&tab!=='Home'&&<View style={s.banner}><Notice error text={error}/></View>}{body}</View>{!safety&&<Pressable accessibilityRole="button" accessibilityLabel="Open Support and Safety" onPress={()=>setSafety(true)} style={s.support}><Ionicons name="shield-checkmark-outline" size={19} color={C.moss}/><Text style={s.supportText}>Support</Text></Pressable>}<View style={s.nav}>{tabs.map(([name,icon])=><Pressable accessibilityRole="tab" accessibilityState={{selected:tab===name}} key={name} onPress={()=>{if(!reducedMotion)LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);setTab(name);setMessage('')}} style={s.navItem}><Ionicons name={icon} size={21} color={tab===name?C.moss:C.muted}/><Text style={[s.navText,tab===name&&{color:C.moss}]}>{name}</Text></Pressable>)}</View></SafeAreaView></View>}
+function Auth({ recoveryError = "" }: { recoveryError?: string }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  async function submit() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const action =
+        mode === "signIn"
+          ? signIn(email, password)
+          : mode === "signUp"
+            ? signUp(email, password)
+            : requestPasswordReset(email);
+      const { error } = await action;
+      if (error)
+        setMsg(
+          mode === "forgot"
+            ? friendlyAuthError(error, "request")
+            : error.message ?? "Something went wrong. Please try again.",
+        );
+      else if (mode === "signUp")
+        setMsg("Check your email to confirm your account, then sign in.");
+      else if (mode === "forgot")
+        setMsg(
+          "If an account exists for that email, a password reset link is on its way.",
+        );
+    } catch (error) {
+      setMsg(
+        mode === "forgot"
+          ? friendlyAuthError(error, "request")
+          : "Something went wrong. Please try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ScrollView contentContainerStyle={s.auth}>
+      <View style={s.brand}>
+        <View style={s.brandIcon}>
+          <Ionicons name="heart" size={32} color={C.white} />
+        </View>
+        <Text style={s.title}>Symptom Story</Text>
+        <Text style={s.subtitle}>
+          A private place for your daily health story.
+        </Text>
+      </View>
+      {!isSupabaseConfigured && (
+        <Notice
+          error
+          text="Supabase is not configured. Add the EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY environment variables."
+        />
+      )}
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>
+          {mode === "signIn"
+            ? "Welcome back"
+            : mode === "signUp"
+              ? "Create your account"
+              : "Reset your password"}
+        </Text>
+        {mode === "forgot" && (
+          <Text style={s.body}>
+            Enter your email and we’ll send you a secure reset link.
+          </Text>
+        )}
+        <Field
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+        />
+        {mode !== "forgot" && (
+          <Field
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete={
+              mode === "signIn" ? "current-password" : "new-password"
+            }
+          />
+        )}
+        {(msg || recoveryError) && (
+          <Notice
+            text={msg || recoveryError}
+            error={
+              Boolean(recoveryError) ||
+              msg.toLowerCase().includes("error") ||
+              msg.toLowerCase().includes("invalid")
+            }
+          />
+        )}
+        <Button
+          disabled={
+            busy ||
+            !email ||
+            (mode === "signIn" && password.length < 6) ||
+            (mode === "signUp" && password.length < 8) ||
+            !isSupabaseConfigured
+          }
+          label={
+            busy
+              ? "Please wait…"
+              : mode === "signIn"
+                ? "Sign in"
+                : mode === "signUp"
+                  ? "Create account"
+                  : "Send reset link"
+          }
+          onPress={submit}
+        />
+        <Button
+          secondary
+          label={
+            mode === "forgot"
+              ? "Back to sign in"
+              : mode === "signIn"
+              ? "New here? Create an account"
+              : "Already have an account? Sign in"
+          }
+          onPress={() => {
+            setMode(
+              mode === "forgot"
+                ? "signIn"
+                : mode === "signIn"
+                  ? "signUp"
+                  : "signIn",
+            );
+            setMsg("");
+          }}
+        />
+        {mode === "signIn" && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              setMode("forgot");
+              setMsg("");
+            }}
+            style={s.textButton}
+          >
+            <Text style={s.textButtonLabel}>Forgot Password?</Text>
+          </Pressable>
+        )}
+      </Card>
+    </ScrollView>
+  );
+}
 
-function JournalScreen({userId,entries,run}:{userId:string;entries:JournalRow[];run:(w:()=>Promise<unknown>,m:string)=>Promise<void>}){const[body,setBody]=useState('');const[busy,setBusy]=useState(false);async function save(){setBusy(true);await run(()=>addJournal(userId,body.trim()),'Reflection saved.');setBody('');setBusy(false)}return <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled"><Text style={s.kicker}>YOUR PRIVATE SPACE</Text><Text style={s.title}>Journal</Text><Card><Field label="New reflection" multiline value={body} onChangeText={setBody} maxLength={5000} placeholder="Write as much or as little as you need…"/><Button disabled={!body.trim()||busy} label={busy?'Saving…':'Save reflection'} onPress={save}/></Card>{entries.length===0?<Card><Text accessibilityRole="header" style={s.heading}>No reflections yet</Text><Text style={s.body}>Your saved reflections will appear here.</Text></Card>:entries.map(x=><Card key={x.id}><Text style={s.kicker}>{new Date(x.created_at).toLocaleDateString()}</Text><Text style={s.body}>{x.body}</Text><Button secondary label="Delete" onPress={()=>run(()=>deleteJournal(x.id),'Reflection deleted.')}/></Card>)}</ScrollView>}
-function ProfileScreen({userId,profile,medications,checkIns,journal,run}:{userId:string;profile:Profile;medications:MedicationRow[];checkIns:CheckInRow[];journal:JournalRow[];run:(w:()=>Promise<unknown>,m:string)=>Promise<void>}){const[name,setName]=useState('');const[schedule,setSchedule]=useState('');async function exportData(){await Share.share({title:'Symptom Story export',message:JSON.stringify({exportedAt:new Date().toISOString(),notice:'Self-reported records; not medical advice.',profile,checkIns,medications,journal},null,2)})}return <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled"><Text style={s.kicker}>YOUR SPACE</Text><Text style={s.title}>{profile.display_name}</Text><Card><Text accessibilityRole="header" style={s.heading}>Add medication</Text><Field label="Medication name" value={name} onChangeText={setName} maxLength={120}/><Field label="Schedule (optional)" value={schedule} onChangeText={setSchedule} maxLength={120}/><Button disabled={!name.trim()} label="Add medication" onPress={async()=>{await run(()=>addMedication(userId,name.trim(),schedule.trim()),'Medication added.');setName('');setSchedule('')}}/></Card>{medications.length===0?<Card><Text accessibilityRole="header" style={s.heading}>No medications</Text><Text style={s.body}>Medications you add will appear here.</Text></Card>:medications.map(m=><Card key={m.id}><Text accessibilityRole="header" style={s.heading}>{m.name}</Text><Text style={s.muted}>{m.schedule||'No schedule recorded'}</Text><View style={s.row}><Button secondary label="Log taken" onPress={()=>run(()=>logMedication(userId,m.id),'Medication logged.')}/><Button secondary label="Remove" onPress={()=>run(()=>deleteMedication(m.id),'Medication removed.')}/></View></Card>)}<Card><Text accessibilityRole="header" style={s.heading}>Your data</Text><Button secondary label="Export my records" icon="share-outline" onPress={exportData}/><Button secondary label="Sign out" onPress={()=>supabase.auth.signOut()}/><Button secondary label="Delete account and data" onPress={()=>Alert.alert('Delete account?','All of your records will be permanently deleted.',[{text:'Cancel'},{text:'Delete',style:'destructive',onPress:()=>run(deleteAccountData,'Account deleted.')}])}/></Card></ScrollView>}
+function ResetPassword({ onDone }: { onDone: () => void }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
-const s=StyleSheet.create({shell:{flex:1,backgroundColor:'#E9ECE8',alignItems:'center'},app:{flex:1,width:'100%',backgroundColor:C.cream},scroll:{paddingHorizontal:20,paddingTop:18,paddingBottom:32,gap:14},auth:{flexGrow:1,padding:24,justifyContent:'center',gap:20},brand:{alignItems:'center',gap:8,marginBottom:8},brandIcon:{width:68,height:68,borderRadius:24,backgroundColor:C.moss,alignItems:'center',justifyContent:'center'},title:{fontSize:30,fontWeight:'800',color:C.ink,letterSpacing:-.7},subtitle:{fontSize:15,lineHeight:22,color:C.muted},heading:{fontSize:18,lineHeight:24,fontWeight:'700',color:C.ink},body:{fontSize:14,lineHeight:21,color:C.ink},muted:{fontSize:13,lineHeight:19,color:C.muted},kicker:{fontSize:11,fontWeight:'800',letterSpacing:1.4,color:C.moss},card:{backgroundColor:C.white,borderWidth:1,borderColor:C.line,borderRadius:20,padding:17,gap:13},field:{gap:6},label:{fontSize:13,fontWeight:'700',color:C.ink},input:{minHeight:50,borderWidth:1,borderColor:'#CDD6D0',borderRadius:14,paddingHorizontal:14,paddingVertical:12,fontSize:16,color:C.ink,backgroundColor:C.white},button:{minHeight:52,borderRadius:16,backgroundColor:C.moss,paddingHorizontal:18,flexGrow:1,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7},buttonPressed:{transform:[{scale:.98}],opacity:.88},buttonDisabled:{opacity:.5},buttonSecondary:{backgroundColor:C.white,borderWidth:1,borderColor:C.moss},buttonText:{fontSize:14,fontWeight:'800',color:C.white,textAlign:'center'},choice:{minHeight:54,borderWidth:1,borderColor:C.line,borderRadius:15,padding:14,flexDirection:'row',alignItems:'center',gap:10},choiceOn:{backgroundColor:C.sage,borderColor:C.moss},choiceText:{fontSize:15,fontWeight:'600',color:C.ink},notice:{padding:12,borderRadius:12,backgroundColor:C.sage},noticeText:{fontSize:13,lineHeight:18,color:C.moss,fontWeight:'600'},center:{flex:1,padding:24,alignItems:'center',justifyContent:'center',gap:16},scale:{flexDirection:'row',justifyContent:'space-between'},scaleItem:{width:48,height:48,borderRadius:16,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},scaleOn:{backgroundColor:C.moss},scaleText:{fontSize:16,fontWeight:'800',color:C.ink},wrap:{flexDirection:'row',flexWrap:'wrap',gap:8},chip:{minHeight:44,paddingHorizontal:14,borderRadius:22,borderWidth:1,borderColor:C.line,justifyContent:'center'},chipOn:{backgroundColor:C.sage,borderColor:C.moss},row:{flexDirection:'row',gap:10},footerActions:{flexDirection:'row',gap:10},checkScroll:{paddingHorizontal:20,paddingTop:16,paddingBottom:28,gap:16,flexGrow:1},checkHeader:{gap:8},progress:{height:6,borderRadius:3,backgroundColor:C.line,overflow:'hidden'},progressFill:{height:6,borderRadius:3,backgroundColor:C.moss},prompt:{fontSize:20,lineHeight:28,fontWeight:'700',color:C.ink,marginBottom:4},scaleHint:{fontSize:11,color:C.muted,textAlign:'center'},choiceStack:{gap:10},textButton:{minHeight:44,alignItems:'center',justifyContent:'center',paddingHorizontal:12},textButtonLabel:{fontSize:14,fontWeight:'700',color:C.moss},chipText:{fontSize:14,color:C.ink},chart:{height:120,flexDirection:'row',gap:8,alignItems:'flex-end',paddingTop:12},bar:{flex:1,minWidth:10,maxWidth:28,borderRadius:6,backgroundColor:C.moss},nav:{height:70,flexDirection:'row',backgroundColor:C.white,borderTopWidth:1,borderColor:C.line,paddingVertical:8},navItem:{flex:1,alignItems:'center',justifyContent:'center',gap:4},navText:{fontSize:10,fontWeight:'700',color:C.muted},banner:{paddingHorizontal:20,paddingTop:8},support:{position:'absolute',right:16,bottom:78,height:48,paddingHorizontal:14,borderRadius:24,backgroundColor:C.white,borderWidth:1,borderColor:C.line,flexDirection:'row',alignItems:'center',gap:6},supportText:{fontSize:13,fontWeight:'800',color:C.moss}});
+  async function submit() {
+    if (password !== confirmation) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const { error: updateError } = await updatePassword(password);
+      if (updateError)
+        setError(friendlyAuthError(updateError, "password"));
+      else onDone();
+    } catch (updateError) {
+      setError(friendlyAuthError(updateError, "password"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={s.auth}>
+      <View style={s.brand}>
+        <View style={s.brandIcon}>
+          <Ionicons name="key-outline" size={32} color={C.white} />
+        </View>
+        <Text accessibilityRole="header" style={s.title}>
+          Choose a new password
+        </Text>
+        <Text style={s.subtitle}>
+          Use at least 8 characters and avoid a password you use elsewhere.
+        </Text>
+      </View>
+      <Card>
+        <Field
+          label="New password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoComplete="new-password"
+        />
+        <Field
+          label="Confirm new password"
+          value={confirmation}
+          onChangeText={setConfirmation}
+          secureTextEntry
+          autoComplete="new-password"
+          onSubmitEditing={submit}
+        />
+        {error && <Notice error text={error} />}
+        <Button
+          disabled={busy || password.length < 8 || confirmation.length < 8}
+          label={busy ? "Updating…" : "Update password"}
+          onPress={submit}
+        />
+      </Card>
+    </ScrollView>
+  );
+}
+
+function RecoveryError({
+  message,
+  onDismiss,
+  signedIn,
+}: {
+  message: string;
+  onDismiss: () => void;
+  signedIn: boolean;
+}) {
+  return (
+    <ScrollView contentContainerStyle={s.auth}>
+      <View style={s.brand}>
+        <View style={s.brandIcon}>
+          <Ionicons name="alert-circle-outline" size={32} color={C.white} />
+        </View>
+        <Text accessibilityRole="header" style={s.title}>
+          Reset link unavailable
+        </Text>
+        <Text style={s.subtitle}>
+          Your current session is unchanged. You can request another reset link
+          if needed.
+        </Text>
+      </View>
+      <Card>
+        <Notice error text={message} />
+        <Button
+          label={signedIn ? "Return to app" : "Back to sign in"}
+          onPress={onDismiss}
+        />
+      </Card>
+    </ScrollView>
+  );
+}
+
+function Onboarding({
+  userId,
+  onDone,
+}: {
+  userId: string;
+  onDone: (p: Profile) => void;
+}) {
+  const [name, setName] = useState("");
+  const [tracking, setTracking] = useState<"pmdd" | "postpartum">("pmdd");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit() {
+    setBusy(true);
+    setError("");
+    try {
+      await saveProfile(userId, {
+        display_name: name.trim(),
+        tracking_mode: tracking,
+      });
+      onDone({
+        display_name: name.trim(),
+        tracking_mode: tracking,
+        onboarding_complete: true,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to save your profile.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ScrollView contentContainerStyle={s.auth}>
+      <Text style={s.kicker}>WELCOME</Text>
+      <Text style={s.title}>Make this space yours</Text>
+      <Text style={s.subtitle}>You can change these preferences later.</Text>
+      <Card>
+        <Field
+          label="What should we call you?"
+          value={name}
+          onChangeText={setName}
+          maxLength={80}
+        />
+        <Text style={s.label}>What would you like to track?</Text>
+        {(
+          [
+            ["pmdd", "PMDD"],
+            ["postpartum", "Postpartum depression"],
+          ] as const
+        ).map(([value, label]) => (
+          <Pressable
+            accessibilityRole="radio"
+            accessibilityState={{ checked: tracking === value }}
+            onPress={() => setTracking(value)}
+            key={value}
+            style={[s.choice, tracking === value && s.choiceOn]}
+          >
+            <Ionicons
+              name={tracking === value ? "radio-button-on" : "radio-button-off"}
+              size={23}
+              color={C.moss}
+            />
+            <Text style={s.choiceText}>{label}</Text>
+          </Pressable>
+        ))}
+        {error && <Notice error text={error} />}
+        <Button
+          disabled={!name.trim() || busy}
+          label={busy ? "Saving…" : "Continue"}
+          onPress={submit}
+        />
+      </Card>
+    </ScrollView>
+  );
+}
+
+function CheckIn({
+  userId,
+  existing,
+  onSaved,
+  onSupport,
+  reducedMotion,
+}: {
+  userId: string;
+  existing?: CheckInRow;
+  onSaved: () => void;
+  onSupport: () => void;
+  reducedMotion: boolean;
+}) {
+  const [step, setStep] = useState(0);
+  const [mood, setMood] = useState(existing?.mood ?? 3);
+  const [sleep, setSleep] = useState(existing?.sleep ?? 3);
+  const [energy, setEnergy] = useState(existing?.energy ?? 3);
+  const [selected, setSelected] = useState<string[]>(existing?.symptoms ?? []);
+  const [med, setMed] = useState<boolean | null>(
+    existing?.medication_taken ?? null,
+  );
+  const [reflection, setReflection] = useState(existing?.reflection ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const sections = [
+    "Mood",
+    "Sleep",
+    "Energy",
+    "Symptoms",
+    "Medication",
+    "Reflection",
+  ];
+  function move(next: number) {
+    if (!reducedMotion)
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setStep(next);
+  }
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await saveCheckIn(userId, {
+        mood,
+        sleep,
+        energy,
+        symptoms: selected,
+        medication_taken: med,
+        reflection: reflection.trim() || null,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to save check-in.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  const scale = (
+    label: string,
+    value: number,
+    setter: (value: number) => void,
+  ) => (
+    <View style={s.scale}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Pressable
+          accessibilityRole="radio"
+          accessibilityLabel={`${label} ${n} out of 5`}
+          accessibilityState={{ checked: value === n }}
+          onPress={() => setter(n)}
+          key={n}
+          style={[s.scaleItem, value === n && s.scaleOn]}
+        >
+          <Text style={[s.scaleText, value === n && { color: C.white }]}>
+            {n}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={s.checkScroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={s.checkHeader}>
+          <Text style={s.kicker}>
+            CHECK-IN · {step + 1} OF {sections.length}
+          </Text>
+          <Text accessibilityRole="header" style={s.title}>
+            {sections[step]}
+          </Text>
+          <View
+            accessibilityLabel={`${step + 1} of ${sections.length} completed`}
+            style={s.progress}
+          >
+            <View
+              style={[
+                s.progressFill,
+                { width: `${((step + 1) / sections.length) * 100}%` },
+              ]}
+            />
+          </View>
+        </View>
+        <Card>
+          {step === 0 ? (
+            <>
+              <Text style={s.prompt}>How does today feel?</Text>
+              {scale("Mood", mood, setMood)}
+              <Text style={s.scaleHint}>
+                1 · Very difficult　　　　　　　　　5 · Very good
+              </Text>
+            </>
+          ) : step === 1 ? (
+            <>
+              <Text style={s.prompt}>How restorative was your sleep?</Text>
+              {scale("Sleep", sleep, setSleep)}
+            </>
+          ) : step === 2 ? (
+            <>
+              <Text style={s.prompt}>How is your energy?</Text>
+              {scale("Energy", energy, setEnergy)}
+            </>
+          ) : step === 3 ? (
+            <>
+              <Text style={s.prompt}>What would you like to remember?</Text>
+              <View style={s.wrap}>
+                {symptoms.map((x) => (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    key={x}
+                    onPress={() =>
+                      setSelected(
+                        selected.includes(x)
+                          ? selected.filter((y) => y !== x)
+                          : [...selected, x],
+                      )
+                    }
+                    style={[s.chip, selected.includes(x) && s.chipOn]}
+                    accessibilityState={{ checked: selected.includes(x) }}
+                  >
+                    <Text style={s.chipText}>{x}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : step === 4 ? (
+            <>
+              <Text style={s.prompt}>Medication taken as planned?</Text>
+              <View style={s.choiceStack}>
+                {(
+                  [
+                    [true, "Yes"],
+                    [false, "No"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Pressable
+                    key={label}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: med === value }}
+                    onPress={() => setMed(value)}
+                    style={[s.choice, med === value && s.choiceOn]}
+                  >
+                    <Ionicons
+                      name={
+                        med === value ? "radio-button-on" : "radio-button-off"
+                      }
+                      size={23}
+                      color={C.moss}
+                    />
+                    <Text style={s.choiceText}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable onPress={() => setMed(null)} style={s.textButton}>
+                <Text style={s.textButtonLabel}>Not applicable</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={s.prompt}>What helped or felt heavy?</Text>
+              <Field
+                label="Optional private reflection"
+                multiline
+                value={reflection}
+                maxLength={2000}
+                placeholder="A few words is enough…"
+                onChangeText={(value) => {
+                  setReflection(value);
+                  if (
+                    /suicid|self[- ]?harm|can't stay safe|cannot remain safe|harm someone|hallucinat|disorient/i.test(
+                      value,
+                    )
+                  )
+                    onSupport();
+                }}
+              />
+              <Text style={s.muted}>{reflection.length}/2000</Text>
+            </>
+          )}
+        </Card>
+        {error && <Notice error text={error} />}
+        <View style={s.footerActions}>
+          {step > 0 && (
+            <Button secondary label="Back" onPress={() => move(step - 1)} />
+          )}
+          <Button
+            disabled={busy}
+            label={
+              busy
+                ? "Saving…"
+                : step === sections.length - 1
+                  ? "Save check-in"
+                  : "Continue"
+            }
+            icon={step === sections.length - 1 ? "checkmark" : "arrow-forward"}
+            onPress={() =>
+              step === sections.length - 1 ? save() : move(step + 1)
+            }
+          />
+        </View>
+        {step < sections.length - 1 && (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => move(step + 1)}
+            style={s.textButton}
+          >
+            <Text style={s.textButtonLabel}>Skip this question</Text>
+          </Pressable>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+function Safety({ close }: { close: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={s.scroll}>
+      <Button secondary label="Close" icon="close" onPress={close} />
+      <Text style={s.kicker}>SUPPORT AND SAFETY</Text>
+      <Text style={s.title}>You deserve human support</Text>
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>
+          If you may act on thoughts of harming yourself or someone else, cannot
+          remain safe, or feel severely disoriented, seek immediate help now.
+        </Text>
+        <Text style={s.body}>
+          Contact local emergency services or go to the nearest emergency
+          department. If possible, tell a trusted support person what is
+          happening and ask them to stay with you.
+        </Text>
+      </Card>
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>
+          Regional resources unavailable
+        </Text>
+        <Text style={s.body}>
+          Verified regional resources have not been configured. No unverified
+          phone number is shown.
+        </Text>
+      </Card>
+      <Text style={s.muted}>
+        This is a static safety response, not medical advice or an AI-generated
+        response. You may leave at any time.
+      </Text>
+    </ScrollView>
+  );
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<Awaited<
+    ReturnType<typeof loadDashboard>
+  > | null>(null);
+  const [tab, setTab] = useState<Tab>("Home");
+  const [safety, setSafety] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [recoveringPassword, setRecoveringPassword] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const { width } = useWindowDimensions();
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
+    const listener = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReducedMotion,
+    );
+    return () => listener.remove();
+  }, []);
+  useEffect(
+    () =>
+      listenForPasswordRecovery({
+        onRecovery: () => {
+          setRecoveryError("");
+          setRecoveringPassword(true);
+        },
+        onError: setRecoveryError,
+      }),
+    [],
+  );
+  useEffect(() => {
+    getCurrentSession().then(({ data }) => {
+      setSession(data.session);
+      setLoading(false);
+    });
+    const {
+      data: { subscription },
+    } = subscribeToAuthChanges(async (_event, next) => {
+      setSession(next);
+      if (!next) setData(null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  async function refresh() {
+    if (!session) return;
+    setLoading(true);
+    setError("");
+    try {
+      setData(await loadDashboard(session.user.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to load your data.");
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (session) refresh();
+  }, [session]);
+  const today = data?.checkIns.find(
+    (x) => x.entry_date === new Date().toISOString().slice(0, 10),
+  );
+  const recoveryDisplay = getRecoveryDisplayState({
+    hasSession: Boolean(session),
+    recovering: recoveringPassword,
+    recoveryError,
+  });
+  if (
+    recoveryDisplay === "error" ||
+    recoveryDisplay === "error-with-session"
+  )
+    return (
+      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520) }]}>
+        <RecoveryError
+          message={recoveryError}
+          signedIn={Boolean(session)}
+          onDismiss={() => setRecoveryError("")}
+        />
+      </SafeAreaView>
+    );
+  if (recoveryDisplay === "password")
+    return (
+      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520) }]}>
+        <ResetPassword
+          onDone={() => {
+            setRecoveringPassword(false);
+            setMessage("Your password has been updated.");
+          }}
+        />
+      </SafeAreaView>
+    );
+  if (loading) return <Busy />;
+  if (!session)
+    return (
+      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520) }]}>
+        <Auth recoveryError={recoveryError} />
+      </SafeAreaView>
+    );
+  if (!data)
+    return (
+      <SafeAreaView style={s.app}>
+        {error ? (
+          <View style={s.center}>
+            <Notice error text={error} />
+            <Button label="Try again" onPress={refresh} />
+          </View>
+        ) : (
+          <Busy />
+        )}
+      </SafeAreaView>
+    );
+  if (!data.profile?.onboarding_complete)
+    return (
+      <SafeAreaView style={s.app}>
+        <Onboarding userId={session.user.id} onDone={() => refresh()} />
+      </SafeAreaView>
+    );
+  const profile = data.profile;
+  async function action(work: () => Promise<unknown>, success: string) {
+    setError("");
+    try {
+      await work();
+      setMessage(success);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    }
+  }
+  let body: React.ReactNode;
+  if (safety) body = <Safety close={() => setSafety(false)} />;
+  else if (tab === "Check-In")
+    body = (
+      <CheckIn
+        userId={session.user.id}
+        existing={today}
+        onSupport={() => setSafety(true)}
+        reducedMotion={reducedMotion}
+        onSaved={() => {
+          setMessage("Your check-in was saved.");
+          setTab("Home");
+          refresh();
+        }}
+      />
+    );
+  else if (tab === "Home")
+    body = (
+      <ScrollView contentContainerStyle={s.scroll}>
+        <Text style={s.kicker}>TODAY</Text>
+        <Text style={s.title}>Hello, {profile.display_name}</Text>
+        <Text style={s.subtitle}>A small moment for yourself is enough.</Text>
+        {message && <Notice text={message} />}{" "}
+        {error && <Notice error text={error} />}
+        <Card>
+          <Text accessibilityRole="header" style={s.heading}>
+            {today ? "Today’s check-in is saved" : "How are you feeling?"}
+          </Text>
+          <Text style={s.body}>
+            {today
+              ? `Mood ${today.mood} of 5 · ${today.symptoms.length} symptoms recorded`
+              : "A gentle check-in takes about two minutes."}
+          </Text>
+          <Button
+            label={today ? "View or edit entry" : "Start check-in"}
+            onPress={() => setTab("Check-In")}
+          />
+          {today && (
+            <Button
+              secondary
+              label="Delete today’s entry"
+              onPress={() =>
+                Alert.alert("Delete check-in?", "This cannot be undone.", [
+                  { text: "Cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () =>
+                      action(
+                        () => deleteCheckIn(today.id),
+                        "Check-in deleted.",
+                      ),
+                  },
+                ])
+              }
+            />
+          )}
+        </Card>
+        <Card>
+          <Text accessibilityRole="header" style={s.heading}>
+            Medications
+          </Text>
+          {data.medications.length ? (
+            <Text style={s.body}>
+              {data.medications.length} active medication
+              {data.medications.length === 1 ? "" : "s"}
+            </Text>
+          ) : (
+            <Text style={s.muted}>No medications added yet.</Text>
+          )}
+          <Button
+            secondary
+            label="Manage medications"
+            onPress={() => setTab("Profile")}
+          />
+        </Card>
+      </ScrollView>
+    );
+  else if (tab === "Trends") {
+    const recent = [...data.checkIns].reverse().slice(-14);
+    const average = recent.length
+      ? (recent.reduce((n, x) => n + x.mood, 0) / recent.length).toFixed(1)
+      : null;
+    body = (
+      <ScrollView contentContainerStyle={s.scroll}>
+        <Text style={s.kicker}>YOUR RECORDS</Text>
+        <Text style={s.title}>Trends</Text>
+        {!recent.length ? (
+          <Card>
+            <Text accessibilityRole="header" style={s.heading}>
+              No trends yet
+            </Text>
+            <Text style={s.body}>
+              Complete a check-in to begin seeing your recorded history.
+            </Text>
+          </Card>
+        ) : (
+          <>
+            <Card>
+              <Text accessibilityRole="header" style={s.heading}>
+                Mood average: {average} of 5
+              </Text>
+              <Text style={s.body}>
+                Based on {recent.length} self-reported check-in
+                {recent.length === 1 ? "" : "s"}. This is a record summary, not
+                a medical interpretation.
+              </Text>
+              <View style={s.chart}>
+                {recent.map((x) => (
+                  <View
+                    accessible
+                    key={x.id}
+                    style={[s.bar, { height: 16 + x.mood * 18 }]}
+                    accessibilityLabel={`${x.entry_date}: mood ${x.mood} of 5`}
+                  />
+                ))}
+              </View>
+            </Card>
+            {recent.map((x) => (
+              <Card key={x.id}>
+                <Text accessibilityRole="header" style={s.heading}>
+                  {x.entry_date} · Mood {x.mood}/5
+                </Text>
+                <Text style={s.body}>
+                  {x.symptoms.length
+                    ? x.symptoms.join(", ")
+                    : "No symptoms recorded"}
+                </Text>
+              </Card>
+            ))}
+          </>
+        )}
+      </ScrollView>
+    );
+  } else if (tab === "Journal") {
+    body = (
+      <JournalScreen
+        userId={session.user.id}
+        entries={data.journal}
+        run={action}
+      />
+    );
+  } else
+    body = (
+      <ProfileScreen
+        userId={session.user.id}
+        profile={profile}
+        medications={data.medications}
+        checkIns={data.checkIns}
+        journal={data.journal}
+        run={action}
+      />
+    );
+  return (
+    <View style={s.shell}>
+      <SafeAreaView
+        style={[s.app, { maxWidth: Math.min(width, 520) }]}
+        edges={["top", "bottom"]}
+      >
+        <View style={{ flex: 1 }}>
+          {message && tab !== "Home" && (
+            <View style={s.banner}>
+              <Notice text={message} />
+            </View>
+          )}
+          {error && tab !== "Home" && (
+            <View style={s.banner}>
+              <Notice error text={error} />
+            </View>
+          )}
+          {body}
+        </View>
+        {!safety && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open Support and Safety"
+            onPress={() => setSafety(true)}
+            style={s.support}
+          >
+            <Ionicons
+              name="shield-checkmark-outline"
+              size={19}
+              color={C.moss}
+            />
+            <Text style={s.supportText}>Support</Text>
+          </Pressable>
+        )}
+        <View style={s.nav}>
+          {tabs.map(([name, icon]) => (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === name }}
+              key={name}
+              onPress={() => {
+                if (!reducedMotion)
+                  LayoutAnimation.configureNext(
+                    LayoutAnimation.Presets.easeInEaseOut,
+                  );
+                setTab(name);
+                setMessage("");
+              }}
+              style={s.navItem}
+            >
+              <Ionicons
+                name={icon}
+                size={21}
+                color={tab === name ? C.moss : C.muted}
+              />
+              <Text style={[s.navText, tab === name && { color: C.moss }]}>
+                {name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function JournalScreen({
+  userId,
+  entries,
+  run,
+}: {
+  userId: string;
+  entries: JournalRow[];
+  run: (w: () => Promise<unknown>, m: string) => Promise<void>;
+}) {
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    await run(() => addJournal(userId, body.trim()), "Reflection saved.");
+    setBody("");
+    setBusy(false);
+  }
+  return (
+    <ScrollView
+      contentContainerStyle={s.scroll}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={s.kicker}>YOUR PRIVATE SPACE</Text>
+      <Text style={s.title}>Journal</Text>
+      <Card>
+        <Field
+          label="New reflection"
+          multiline
+          value={body}
+          onChangeText={setBody}
+          maxLength={5000}
+          placeholder="Write as much or as little as you need…"
+        />
+        <Button
+          disabled={!body.trim() || busy}
+          label={busy ? "Saving…" : "Save reflection"}
+          onPress={save}
+        />
+      </Card>
+      {entries.length === 0 ? (
+        <Card>
+          <Text accessibilityRole="header" style={s.heading}>
+            No reflections yet
+          </Text>
+          <Text style={s.body}>Your saved reflections will appear here.</Text>
+        </Card>
+      ) : (
+        entries.map((x) => (
+          <Card key={x.id}>
+            <Text style={s.kicker}>
+              {new Date(x.created_at).toLocaleDateString()}
+            </Text>
+            <Text style={s.body}>{x.body}</Text>
+            <Button
+              secondary
+              label="Delete"
+              onPress={() =>
+                run(() => deleteJournal(x.id), "Reflection deleted.")
+              }
+            />
+          </Card>
+        ))
+      )}
+    </ScrollView>
+  );
+}
+function ProfileScreen({
+  userId,
+  profile,
+  medications,
+  checkIns,
+  journal,
+  run,
+}: {
+  userId: string;
+  profile: Profile;
+  medications: MedicationRow[];
+  checkIns: CheckInRow[];
+  journal: JournalRow[];
+  run: (w: () => Promise<unknown>, m: string) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [schedule, setSchedule] = useState("");
+  async function exportData() {
+    await Share.share({
+      title: "Symptom Story export",
+      message: JSON.stringify(
+        {
+          exportedAt: new Date().toISOString(),
+          notice: "Self-reported records; not medical advice.",
+          profile,
+          checkIns,
+          medications,
+          journal,
+        },
+        null,
+        2,
+      ),
+    });
+  }
+  return (
+    <ScrollView
+      contentContainerStyle={s.scroll}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={s.kicker}>YOUR SPACE</Text>
+      <Text style={s.title}>{profile.display_name}</Text>
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>
+          Add medication
+        </Text>
+        <Field
+          label="Medication name"
+          value={name}
+          onChangeText={setName}
+          maxLength={120}
+        />
+        <Field
+          label="Schedule (optional)"
+          value={schedule}
+          onChangeText={setSchedule}
+          maxLength={120}
+        />
+        <Button
+          disabled={!name.trim()}
+          label="Add medication"
+          onPress={async () => {
+            await run(
+              () => addMedication(userId, name.trim(), schedule.trim()),
+              "Medication added.",
+            );
+            setName("");
+            setSchedule("");
+          }}
+        />
+      </Card>
+      {medications.length === 0 ? (
+        <Card>
+          <Text accessibilityRole="header" style={s.heading}>
+            No medications
+          </Text>
+          <Text style={s.body}>Medications you add will appear here.</Text>
+        </Card>
+      ) : (
+        medications.map((m) => (
+          <Card key={m.id}>
+            <Text accessibilityRole="header" style={s.heading}>
+              {m.name}
+            </Text>
+            <Text style={s.muted}>{m.schedule || "No schedule recorded"}</Text>
+            <View style={s.row}>
+              <Button
+                secondary
+                label="Log taken"
+                onPress={() =>
+                  run(() => logMedication(userId, m.id), "Medication logged.")
+                }
+              />
+              <Button
+                secondary
+                label="Remove"
+                onPress={() =>
+                  run(() => deleteMedication(m.id), "Medication removed.")
+                }
+              />
+            </View>
+          </Card>
+        ))
+      )}
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>
+          Your data
+        </Text>
+        <Button
+          secondary
+          label="Export my records"
+          icon="share-outline"
+          onPress={exportData}
+        />
+        <Button
+          secondary
+          label="Sign out"
+          onPress={() => signOut()}
+        />
+        <Button
+          secondary
+          label="Delete account and data"
+          onPress={() =>
+            Alert.alert(
+              "Delete account?",
+              "All of your records will be permanently deleted.",
+              [
+                { text: "Cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => run(deleteAccountData, "Account deleted."),
+                },
+              ],
+            )
+          }
+        />
+      </Card>
+    </ScrollView>
+  );
+}
+
+const s = StyleSheet.create({
+  shell: { flex: 1, backgroundColor: "#E9ECE8", alignItems: "center" },
+  app: { flex: 1, width: "100%", backgroundColor: C.cream },
+  scroll: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 32, gap: 14 },
+  auth: { flexGrow: 1, padding: 24, justifyContent: "center", gap: 20 },
+  brand: { alignItems: "center", gap: 8, marginBottom: 8 },
+  brandIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 24,
+    backgroundColor: C.moss,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: 30, fontWeight: "800", color: C.ink, letterSpacing: -0.7 },
+  subtitle: { fontSize: 15, lineHeight: 22, color: C.muted },
+  heading: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: C.ink },
+  body: { fontSize: 14, lineHeight: 21, color: C.ink },
+  muted: { fontSize: 13, lineHeight: 19, color: C.muted },
+  kicker: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    color: C.moss,
+  },
+  card: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 20,
+    padding: 17,
+    gap: 13,
+  },
+  field: { gap: 6 },
+  label: { fontSize: 13, fontWeight: "700", color: C.ink },
+  input: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: "#CDD6D0",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: C.ink,
+    backgroundColor: C.white,
+  },
+  button: {
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: C.moss,
+    paddingHorizontal: 18,
+    flexGrow: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  buttonPressed: { transform: [{ scale: 0.98 }], opacity: 0.88 },
+  buttonDisabled: { opacity: 0.5 },
+  buttonSecondary: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.moss,
+  },
+  buttonText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: C.white,
+    textAlign: "center",
+  },
+  choice: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: C.line,
+    borderRadius: 15,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  choiceOn: { backgroundColor: C.sage, borderColor: C.moss },
+  choiceText: { fontSize: 15, fontWeight: "600", color: C.ink },
+  notice: { padding: 12, borderRadius: 12, backgroundColor: C.sage },
+  noticeText: {
+    fontSize: 13,
+    lineHeight: 18,
+    color: C.moss,
+    fontWeight: "600",
+  },
+  center: {
+    flex: 1,
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+  },
+  scale: { flexDirection: "row", justifyContent: "space-between" },
+  scaleItem: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scaleOn: { backgroundColor: C.moss },
+  scaleText: { fontSize: 16, fontWeight: "800", color: C.ink },
+  wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: C.line,
+    justifyContent: "center",
+  },
+  chipOn: { backgroundColor: C.sage, borderColor: C.moss },
+  row: { flexDirection: "row", gap: 10 },
+  footerActions: { flexDirection: "row", gap: 10 },
+  checkScroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 28,
+    gap: 16,
+    flexGrow: 1,
+  },
+  checkHeader: { gap: 8 },
+  progress: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.line,
+    overflow: "hidden",
+  },
+  progressFill: { height: 6, borderRadius: 3, backgroundColor: C.moss },
+  prompt: {
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: "700",
+    color: C.ink,
+    marginBottom: 4,
+  },
+  scaleHint: { fontSize: 11, color: C.muted, textAlign: "center" },
+  choiceStack: { gap: 10 },
+  textButton: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  textButtonLabel: { fontSize: 14, fontWeight: "700", color: C.moss },
+  chipText: { fontSize: 14, color: C.ink },
+  chart: {
+    height: 120,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "flex-end",
+    paddingTop: 12,
+  },
+  bar: {
+    flex: 1,
+    minWidth: 10,
+    maxWidth: 28,
+    borderRadius: 6,
+    backgroundColor: C.moss,
+  },
+  nav: {
+    height: 70,
+    flexDirection: "row",
+    backgroundColor: C.white,
+    borderTopWidth: 1,
+    borderColor: C.line,
+    paddingVertical: 8,
+  },
+  navItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4 },
+  navText: { fontSize: 10, fontWeight: "700", color: C.muted },
+  banner: { paddingHorizontal: 20, paddingTop: 8 },
+  support: {
+    position: "absolute",
+    right: 16,
+    bottom: 78,
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 24,
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.line,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  supportText: { fontSize: 13, fontWeight: "800", color: C.moss },
+});

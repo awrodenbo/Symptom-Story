@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { signOut } from './auth';
 
 export type Profile = { display_name: string; tracking_mode: 'pmdd' | 'postpartum'; onboarding_complete: boolean };
 export type CheckInRow = { id: string; user_id: string; entry_date: string; mood: number; sleep: number | null; energy: number | null; symptoms: string[]; medication_taken: boolean | null; reflection: string | null; created_at: string };
@@ -35,4 +36,4 @@ export async function deleteMedication(id: string) { const result = await supaba
 export async function logMedication(userId: string, medicationId: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
 export async function addJournal(userId: string, body: string) { const result = await supabase.from('journal_entries').insert({ user_id: userId, body }).select().single(); fail(result.error); return result.data as JournalRow; }
 export async function deleteJournal(id: string) { const result = await supabase.from('journal_entries').delete().eq('id', id); fail(result.error); }
-export async function deleteAccountData() { const result = await supabase.rpc('delete_my_account'); fail(result.error); await supabase.auth.signOut(); }
+export async function deleteAccountData() { const result = await supabase.rpc('delete_my_account'); fail(result.error); await signOut(); }
