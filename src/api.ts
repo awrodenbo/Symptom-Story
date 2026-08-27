@@ -7,6 +7,7 @@ export type {
   CycleEventRow,
   CycleSettingsRow,
   CycleSettingsUpdate,
+  PrePeriodPlanRow,
 } from './cycle-api.ts';
 
 export type Profile = { display_name: string; tracking_mode: 'pmdd' | 'postpartum'; onboarding_complete: boolean };
@@ -21,6 +22,9 @@ export const {
   createCycleEvent,
   updateCycleEvent,
   deleteCycleEvent,
+  loadPrePeriodPlan,
+  savePrePeriodPlan,
+  deletePrePeriodPlan,
 } = createCycleApi(supabase as unknown as CycleDataClient);
 
 function today() { return new Date().toISOString().slice(0, 10); }

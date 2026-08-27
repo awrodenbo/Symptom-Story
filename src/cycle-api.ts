@@ -31,6 +31,13 @@ export type CycleSettingsUpdate = Partial<Pick<
   'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'reminder_enabled' | 'reminder_days_before'
 >>;
 
+export type PrePeriodPlanRow = {
+  user_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
 type ApiError = { message: string } | null;
 type QueryResult<T = unknown> = { data: T; error: ApiError };
 type CycleQuery = {
@@ -53,7 +60,7 @@ export type CycleDataClient = {
   auth: {
     getUser(): Promise<{ data: { user: { id: string } | null }; error: ApiError }>;
   };
-  from(table: 'cycle_settings' | 'cycle_events'): {
+  from(table: 'cycle_settings' | 'cycle_events' | 'pre_period_plans'): {
     select(fields: string): CycleQuery;
     insert(payload: Record<string, unknown>): CycleQuery;
     upsert(payload: Record<string, unknown>, options?: { onConflict: string }): CycleQuery;
@@ -127,6 +134,28 @@ export function createCycleApi(client: CycleDataClient) {
     return result.data as CycleSettingsRow;
   }
 
+  async function loadPrePeriodPlan(): Promise<PrePeriodPlanRow | null> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('pre_period_plans').select('*').eq('user_id', userId).maybeSingle();
+    fail(result.error);
+    return result.data as PrePeriodPlanRow | null;
+  }
+
+  async function savePrePeriodPlan(body: string): Promise<PrePeriodPlanRow> {
+    const trimmed = body.trim();
+    if (!trimmed || trimmed.length > 5000) throw new Error('Your support plan must be between 1 and 5000 characters.');
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('pre_period_plans').upsert({ user_id: userId, body: trimmed }, { onConflict: 'user_id' }).select('*').single();
+    fail(result.error);
+    return result.data as PrePeriodPlanRow;
+  }
+
+  async function deletePrePeriodPlan(): Promise<void> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('pre_period_plans').delete().eq('user_id', userId);
+    fail(result.error);
+  }
+
   async function loadCycleEvents(): Promise<CycleEventRow[]> {
     const userId = await authenticatedUserId(client);
     const result = await client.from('cycle_events').select('*').eq('user_id', userId)
@@ -168,5 +197,5 @@ export function createCycleApi(client: CycleDataClient) {
     fail(result.error);
   }
 
-  return { loadCycleSettings, updateCycleSettings, loadCycleEvents, createCycleEvent, updateCycleEvent, deleteCycleEvent };
+  return { loadCycleSettings, updateCycleSettings, loadCycleEvents, createCycleEvent, updateCycleEvent, deleteCycleEvent, loadPrePeriodPlan, savePrePeriodPlan, deletePrePeriodPlan };
 }

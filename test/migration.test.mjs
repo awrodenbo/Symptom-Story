@@ -7,6 +7,7 @@ const medicationOwnershipSql = readFileSync(new URL('../supabase/migrations/2026
 const cycleSql = readFileSync(new URL('../supabase/migrations/202608270002_cycle_tracker_foundation.sql', import.meta.url), 'utf8');
 const cycleDateSql = readFileSync(new URL('../supabase/migrations/202608270003_cycle_event_local_date.sql', import.meta.url), 'utf8');
 const feelingsSql = readFileSync(new URL('../supabase/migrations/202608270004_check_in_feelings.sql', import.meta.url), 'utf8');
+const planSql = readFileSync(new URL('../supabase/migrations/202608270005_pre_period_plans.sql', import.meta.url), 'utf8');
 const tables = ['profiles', 'check_ins', 'medications', 'medication_logs', 'journal_entries'];
 
 test('every user-data table enables row-level security', () => {
@@ -69,4 +70,13 @@ test('cycle events have a required local calendar date and date-aware index', ()
 test('check-ins add optional feelings storage without changing the mood score', () => {
   assert.match(feelingsSql, /alter table public\.check_ins\s+add column feelings text\[\] not null default '\{\}'/i);
   assert.match(sql, /mood smallint not null check \(mood between 1 and 5\)/i);
+});
+
+test('pre-period plans are single, user-owned, and cascade on account deletion', () => {
+  assert.match(planSql, /create table public\.pre_period_plans[\s\S]+user_id uuid primary key references auth\.users\(id\) on delete cascade/i);
+  assert.match(planSql, /body text not null check \(char_length\(body\) between 1 and 5000\)/i);
+  assert.match(planSql, /alter table public\.pre_period_plans enable row level security/i);
+  for (const operation of ['select', 'insert', 'update', 'delete']) {
+    assert.match(planSql, new RegExp(`create policy[^;]+on public\\.pre_period_plans[^;]+for ${operation}`, 'is'));
+  }
 });

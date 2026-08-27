@@ -5,6 +5,7 @@ import {
   type CycleDataClient,
   type CycleEventRow,
   type CycleSettingsRow,
+  type PrePeriodPlanRow,
 } from '../src/cycle-api.ts';
 import type { CycleEvent } from '../src/domain.ts';
 
@@ -16,9 +17,10 @@ type Call = {
   orders: { column: string; ascending: boolean }[];
 };
 
-function createClient({ settings = null, events = [] as CycleEventRow[] }: { settings?: CycleSettingsRow | null; events?: CycleEventRow[] } = {}) {
+function createClient({ settings = null, plan = null, events = [] as CycleEventRow[] }: { settings?: CycleSettingsRow | null; plan?: PrePeriodPlanRow | null; events?: CycleEventRow[] } = {}) {
   const calls: Call[] = [];
   let nextSettings = settings;
+  let nextPlan = plan;
   let nextEvents = [...events];
   let eventId = 1;
   const client = {
@@ -61,6 +63,10 @@ function createClient({ settings = null, events = [] as CycleEventRow[] }: { set
           }
           return { data: nextSettings, error: null };
         }
+        if (table === 'pre_period_plans') {
+          if (state.operation === 'upsert') nextPlan = { user_id: 'user-a', body: String(state.payload?.body), created_at: '2026-08-27T00:00:00Z', updated_at: '2026-08-27T00:00:00Z' };
+          return { data: nextPlan, error: null };
+        }
         if (state.operation === 'insert') {
           const row = {
             id: `event-${eventId++}`,
@@ -84,7 +90,7 @@ function createClient({ settings = null, events = [] as CycleEventRow[] }: { set
       return builder;
     },
   };
-  return { api: createCycleApi(client as unknown as CycleDataClient), calls, getSettings: () => nextSettings, getEvents: () => nextEvents };
+  return { api: createCycleApi(client as unknown as CycleDataClient), calls, getSettings: () => nextSettings, getPlan: () => nextPlan, getEvents: () => nextEvents };
 }
 
 const row = (overrides: Partial<CycleEventRow> = {}): CycleEventRow => ({
@@ -175,4 +181,15 @@ test('validates event combinations before writing and scopes update/delete to th
   await harness.api.deleteCycleEvent('event-1');
   assert.deepEqual(harness.calls[0].filters, [{ id: 'event-1' }, { user_id: 'user-a' }]);
   assert.deepEqual(harness.calls[1].filters, [{ id: 'event-1' }, { user_id: 'user-a' }]);
+});
+
+test('loads, saves, and deletes the authenticated user\'s pre-period plan', async () => {
+  const harness = createClient();
+  assert.equal(await harness.api.loadPrePeriodPlan(), null);
+  const saved = await harness.api.savePrePeriodPlan('Review my own plan and rest when needed.');
+  assert.equal(saved.body, 'Review my own plan and rest when needed.');
+  assert.equal(harness.getPlan()?.user_id, 'user-a');
+  await assert.rejects(harness.api.savePrePeriodPlan(''), /between 1 and 5000/);
+  await harness.api.deletePrePeriodPlan();
+  assert.deepEqual(harness.calls.at(-1)?.filters, [{ user_id: 'user-a' }]);
 });

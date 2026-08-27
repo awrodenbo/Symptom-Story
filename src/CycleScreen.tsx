@@ -16,11 +16,15 @@ import {
   deleteCycleEvent,
   loadCycleEvents,
   loadCycleSettings,
+  loadPrePeriodPlan,
+  savePrePeriodPlan,
+  deletePrePeriodPlan,
   updateCycleSettings,
   updateCycleEvent,
   type CycleEventInput,
   type CycleEventRow,
   type CycleSettingsRow,
+  type PrePeriodPlanRow,
 } from "./api";
 import {
   calculateCycleHistory,
@@ -73,6 +77,10 @@ function timeFromTimestamp(value: string): string {
   return value.slice(11, 16);
 }
 
+function calendarDifference(start: string, end: string): number {
+  return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
+}
+
 function friendlyFlow(level: CycleFlowLevel | null): string {
   return level?.replace("_", " ") ?? "";
 }
@@ -118,6 +126,7 @@ function eventInput(type: CycleEventType, eventDate: string, occurredAt: string,
 
 export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: () => void; reducedMotion: boolean }) {
   const [settings, setSettings] = useState<CycleSettingsRow | null>(null);
+  const [plan, setPlan] = useState<PrePeriodPlanRow | null>(null);
   const [events, setEvents] = useState<CycleEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -128,14 +137,17 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
   const [eventDate, setEventDate] = useState(localDate);
   const [occurredAt, setOccurredAt] = useState(localTimestamp);
   const [flowLevel, setFlowLevel] = useState<CycleFlowLevel | null>(null);
+  const [planDraft, setPlanDraft] = useState("");
+  const [planBusy, setPlanBusy] = useState(false);
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [nextSettings, nextEvents] = await Promise.all([loadCycleSettings(false), loadCycleEvents()]);
+      const [nextSettings, nextEvents, nextPlan] = await Promise.all([loadCycleSettings(false), loadCycleEvents(), loadPrePeriodPlan()]);
       setSettings(nextSettings);
       setEvents(nextEvents);
+      setPlan(nextPlan);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load cycle records.");
     } finally {
@@ -144,6 +156,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
   }
 
   useEffect(() => { load(); }, []);
+  useEffect(() => setPlanDraft(plan?.body ?? ""), [plan]);
 
   function resetEditor() {
     setEditing(null);
@@ -234,6 +247,39 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
   }, {});
   const dates = Object.keys(grouped).sort((left, right) => right.localeCompare(left));
   const trackingEnabled = settings?.tracking_enabled ?? false;
+  const reminderDays = settings?.reminder_days_before ?? 7;
+  const daysUntilPeriod = nextPeriod.estimatedDate
+    ? calendarDifference(localDate(), nextPeriod.estimatedDate)
+    : null;
+  const supportWindowActive = nextPeriod.isEstimate && daysUntilPeriod !== null
+    && daysUntilPeriod >= 0 && daysUntilPeriod <= reminderDays;
+  async function savePlan() {
+    setPlanBusy(true);
+    setError("");
+    try {
+      const saved = await savePrePeriodPlan(planDraft);
+      setPlan(saved);
+      setMessage("Your support plan was saved.");
+    } catch (planError) {
+      setError(planError instanceof Error ? planError.message : "Unable to save your support plan.");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+
+  async function removePlan() {
+    setPlanBusy(true);
+    try {
+      await deletePrePeriodPlan();
+      setPlan(null);
+      setPlanDraft("");
+      setMessage("Your support plan was deleted.");
+    } catch (planError) {
+      setError(planError instanceof Error ? planError.message : "Unable to delete your support plan.");
+    } finally {
+      setPlanBusy(false);
+    }
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -268,6 +314,30 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
               </Text>
             )}
             <Button secondary label="Open today's Check-In" onPress={onCheckIn} />
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Pre-period support</Text>
+            <Text style={styles.body}>Choose when your in-app support window begins. Common choices are 5–7 days before an estimated period.</Text>
+            <View style={styles.wrap}>
+              {[5, 6, 7].map((days) => (
+                <Pressable key={days} accessibilityRole="radio" accessibilityState={{ checked: reminderDays === days }} onPress={() => updateCycleSettings({ reminder_days_before: days })} style={[styles.chip, reminderDays === days && styles.chipOn]}>
+                  <Text style={styles.chipText}>{days} days</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Field label="Support window days before period (1–14)" value={String(reminderDays)} onChangeText={(value) => {
+              const days = Number(value);
+              if (Number.isInteger(days) && days >= 1 && days <= 14) updateCycleSettings({ reminder_days_before: days }).then(setSettings).catch(() => setError("Unable to update support-window timing."));
+            }} />
+            {supportWindowActive && <Notice text="Your support window is beginning. Review your own established support plan." />}
+            <Text style={styles.label}>My Pre-Period Plan</Text>
+            <TextInput accessibilityLabel="My Pre-Period Plan" multiline maxLength={5000} onChangeText={setPlanDraft} placeholder="Write your own established support plan..." placeholderTextColor="#89958E" style={[styles.input, styles.planInput]} value={planDraft} />
+            <Text style={styles.muted}>This is your plan, not medical advice. Symptom Story will not tell you to start, stop, increase, or decrease medication.</Text>
+            <View style={styles.row}>
+              <Button disabled={planBusy || !planDraft.trim()} label={planBusy ? "Saving..." : "Save plan"} onPress={savePlan} />
+              {plan && <Button secondary disabled={planBusy} label="Delete plan" onPress={() => Alert.alert("Delete support plan?", "This cannot be undone.", [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: removePlan }])} />}
+            </View>
           </View>
 
           <View style={styles.card}>
@@ -359,6 +429,7 @@ const styles = StyleSheet.create({
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: "700", color: C.ink },
   input: { minHeight: 48, borderWidth: 1, borderColor: "#CDD6D0", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: C.ink, backgroundColor: C.white },
+  planInput: { minHeight: 120, textAlignVertical: "top" },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 42, paddingHorizontal: 13, borderRadius: 21, borderWidth: 1, borderColor: C.line, justifyContent: "center" },
   chipOn: { backgroundColor: C.sage, borderColor: C.moss },
