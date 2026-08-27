@@ -24,6 +24,7 @@ import {
   type CycleEventInput,
   type CycleEventRow,
   type CycleSettingsRow,
+  type CheckInRow,
   type PrePeriodPlanRow,
 } from "./api";
 import {
@@ -33,6 +34,8 @@ import {
   type CycleEvent,
   type CycleEventType,
   type CycleFlowLevel,
+  recommendationDisclaimer,
+  selectSupportRecommendations,
 } from "./domain";
 
 const C = {
@@ -124,7 +127,7 @@ function eventInput(type: CycleEventType, eventDate: string, occurredAt: string,
   return { event_type: type, event_date: eventDate, occurred_at: occurredAt, flow_level: flowLevel };
 }
 
-export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: () => void; reducedMotion: boolean }) {
+export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onCheckIn: () => void; reducedMotion: boolean; checkIn?: CheckInRow }) {
   const [settings, setSettings] = useState<CycleSettingsRow | null>(null);
   const [plan, setPlan] = useState<PrePeriodPlanRow | null>(null);
   const [events, setEvents] = useState<CycleEventRow[]>([]);
@@ -253,6 +256,18 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
     : null;
   const supportWindowActive = nextPeriod.isEstimate && daysUntilPeriod !== null
     && daysUntilPeriod >= 0 && daysUntilPeriod <= reminderDays;
+  const currentlyBleeding = events.some((event) => event.event_type === "period_start" && event.event_date <= localDate())
+    && !events.some((event) => event.event_type === "period_end" && event.event_date >= (events.filter((item) => item.event_type === "period_start" && item.event_date <= localDate()).at(-1)?.event_date ?? localDate()));
+  const supportRecommendations = selectSupportRecommendations({
+    phase: phase.phase,
+    mood: checkIn?.mood ?? null,
+    energy: checkIn?.energy ?? null,
+    feelings: checkIn?.feelings ?? [],
+    symptoms: checkIn?.symptoms ?? [],
+    currentlyBleeding,
+    inPrePeriodWindow: supportWindowActive,
+    hasPrePeriodPlan: Boolean(plan?.body.trim()),
+  });
   async function savePlan() {
     setPlanBusy(true);
     setError("");
@@ -314,6 +329,19 @@ export default function CycleScreen({ onCheckIn, reducedMotion }: { onCheckIn: (
               </Text>
             )}
             <Button secondary label="Open today's Check-In" onPress={onCheckIn} />
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Support for today</Text>
+            <Text style={styles.muted}>Optional ideas shaped first by what you reported today.</Text>
+            {supportRecommendations.map((recommendation) => (
+              <View key={recommendation.category} style={styles.supportRow}>
+                <Text accessibilityRole="header" style={styles.supportCategory}>{recommendation.category}</Text>
+                <Text style={styles.supportTitle}>{recommendation.title}</Text>
+                <Text style={styles.body}>{recommendation.detail}</Text>
+              </View>
+            ))}
+            <Text style={styles.muted}>{recommendationDisclaimer}</Text>
           </View>
 
           <View style={styles.card}>
@@ -448,4 +476,7 @@ const styles = StyleSheet.create({
   eventName: { fontSize: 14, fontWeight: "700", color: C.ink },
   eventActions: { flexDirection: "row", gap: 2 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  supportRow: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, gap: 3 },
+  supportCategory: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: C.moss },
+  supportTitle: { fontSize: 15, lineHeight: 20, fontWeight: "700", color: C.ink },
 });

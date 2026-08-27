@@ -978,6 +978,7 @@ export default function App() {
   else if (tab === "Cycle")
     body = (
       <CycleScreen
+        checkIn={today}
         onCheckIn={() => setTab("Check-In")}
         reducedMotion={reducedMotion}
       />

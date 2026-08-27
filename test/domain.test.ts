@@ -5,9 +5,11 @@ import {
   findProhibitedPhrases, recordsForOwner, saveOwnedRecord, shouldShowSafetySupport,
   calculateCycleHistory, deriveCompletedCycleLengths, estimateCyclePhase, estimateNextPeriod,
   analyzePatterns,
+  recommendationDisclaimer, selectSupportRecommendations,
   type CheckIn, type JournalEntry, type MedicationLog,
   type CycleEvent,
   type PatternCheckIn,
+  type SupportRecommendationContext,
 } from '../src/domain.ts';
 
 const alex = 'user-alex';
@@ -305,6 +307,48 @@ test('patterns retain long variable cycle history without diagnostic labeling', 
   assert.equal(result.completedCycles, 3);
   assert.equal(result.status, 'observations');
   assert.doesNotMatch(JSON.stringify(result.observations), /abnormal|irregular|PCOS/i);
+});
+
+function recommendations(overrides: Partial<SupportRecommendationContext> = {}) {
+  return selectSupportRecommendations({
+    phase: 'luteal', mood: 3, energy: 3, feelings: [], symptoms: [],
+    currentlyBleeding: false, inPrePeriodWindow: false, hasPrePeriodPlan: false,
+    ...overrides,
+  });
+}
+
+test('low energy and symptoms override phase assumptions for movement', () => {
+  const move = recommendations({ energy: 1, symptoms: ['Pelvic pain'] }).find((item) => item.category === 'Move');
+  assert.match(move?.detail ?? '', /rest|stretch|easy walk/i);
+  assert.doesNotMatch(move?.detail ?? '', /moderate|normal preferred exercise/i);
+});
+
+test('high energy keeps normal movement available even in a pre-period phase', () => {
+  const move = recommendations({ energy: 5, inPrePeriodWindow: true }).find((item) => item.category === 'Move');
+  assert.match(move?.detail ?? '', /normal preferred exercise|moderate/i);
+});
+
+test('bleeding and nausea produce supportive food options', () => {
+  const bleeding = recommendations({ currentlyBleeding: true }).find((item) => item.category === 'Eat');
+  const nausea = recommendations({ symptoms: ['Nausea'] }).find((item) => item.category === 'Eat');
+  assert.match(bleeding?.detail ?? '', /regular meals|iron-rich/i);
+  assert.match(nausea?.detail ?? '', /simple|tolerable|fluids/i);
+});
+
+test('Restore reflects an active pre-period plan window when available', () => {
+  const restore = recommendations({ inPrePeriodWindow: true, hasPrePeriodPlan: true }).find((item) => item.category === 'Restore');
+  assert.match(restore?.title ?? '', /support plan/i);
+});
+
+test('recommendations remain useful without an estimated phase', () => {
+  const result = recommendations({ phase: null, energy: 2, symptoms: ['Bloating'] });
+  assert.equal(result.length, 3);
+  assert.ok(result.every((item) => item.title && item.detail));
+});
+
+test('recommendations contain no medical, fertility, hormone, or causal claims', () => {
+  const output = JSON.stringify(recommendations({ energy: 4, currentlyBleeding: true, feelings: ['Anxious'] })) + recommendationDisclaimer;
+  assert.doesNotMatch(output, /medication|fertility|pregnan|ovulat|hormone|PMDD|PCOS|treat|cause|regulat/i);
 });
 
 test('cycle calculations use intended local dates instead of UTC timestamp dates', () => {

@@ -107,6 +107,56 @@ export type PatternAnalysis = {
   disclaimer: string;
 };
 
+export type SupportRecommendationContext = {
+  phase: EstimatedCyclePhase | null;
+  mood: number | null;
+  energy: number | null;
+  feelings: string[];
+  symptoms: string[];
+  currentlyBleeding: boolean;
+  inPrePeriodWindow: boolean;
+  hasPrePeriodPlan: boolean;
+};
+
+export type SupportRecommendation = {
+  category: 'Eat' | 'Move' | 'Restore';
+  title: string;
+  detail: string;
+};
+
+export const recommendationDisclaimer = 'Optional wellness ideas based on what you reported, not medical advice or a requirement.';
+
+export function selectSupportRecommendations(context: SupportRecommendationContext): SupportRecommendation[] {
+  const symptoms = new Set(context.symptoms.map((symptom) => symptom.toLowerCase()));
+  const feelings = new Set(context.feelings.map((feeling) => feeling.toLowerCase()));
+  const depleted = context.energy !== null && context.energy <= 2;
+  const highEnergy = context.energy !== null && context.energy >= 4;
+  const painOrHeavyFlow = symptoms.has('pelvic pain') || symptoms.has('cramps') || context.currentlyBleeding;
+  const nauseaOrGi = ['nausea', 'diarrhea', 'constipation', 'abdominal discomfort'].some((symptom) => symptoms.has(symptom));
+  const eat = nauseaOrGi
+    ? { title: 'Choose simple, tolerable food', detail: 'You might consider small, familiar meals or snacks and fluids if that feels easier today.' }
+    : context.currentlyBleeding
+      ? { title: 'Support your nourishment', detail: 'You might consider regular meals, fluids, and iron-rich foods while bleeding.' }
+      : depleted
+        ? { title: 'Keep nourishment easy', detail: 'One option is a satisfying meal or snack with protein, fiber, and complex carbohydrates.' }
+        : { title: 'Build a steady meal moment', detail: 'You might consider a satisfying meal or snack with fruits or vegetables and something filling.' };
+  const move = depleted || painOrHeavyFlow || nauseaOrGi
+    ? { title: 'Make room for rest or gentle movement', detail: 'If it feels supportive, try resting, stretching, or a short easy walk rather than pushing intensity.' }
+    : highEnergy
+      ? { title: 'Use the movement you enjoy', detail: 'If it feels good today, your normal preferred exercise or a moderate activity could be an option.' }
+      : { title: 'Try a manageable movement break', detail: 'You might consider a walk, stretching, or another movement that matches your energy.' };
+  const restore = context.inPrePeriodWindow && context.hasPrePeriodPlan
+    ? { title: 'Review your own support plan', detail: 'Your support window is active. You might review the plan you wrote for yourself.' }
+    : depleted || feelings.has('overwhelmed') || feelings.has('restless')
+      ? { title: 'Reduce the load where you can', detail: 'One option is a short wind-down, rest, or reducing an unnecessary demand today.' }
+      : { title: 'Protect a restorative moment', detail: 'You might consider hydration, a calming pause, or a simple sleep wind-down routine.' };
+  return [
+    { category: 'Eat', ...eat },
+    { category: 'Move', ...move },
+    { category: 'Restore', ...restore },
+  ];
+}
+
 const MIN_PREDICTION_CYCLE_LENGTH = 10;
 const MAX_PREDICTION_CYCLE_LENGTH = 120;
 const MEANINGFUL_VARIABILITY_DAYS = 3;
