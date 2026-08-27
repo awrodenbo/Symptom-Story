@@ -26,6 +26,252 @@ export type UserData = {
   journal: JournalEntry[];
 };
 
+export type CycleEventType = 'period_start' | 'period_end' | 'spotting' | 'flow';
+
+export type CycleEvent = {
+  event_type: CycleEventType;
+  occurred_at: string;
+};
+
+export type CycleHistory = {
+  cycleLengths: number[];
+  predictionCycleLengths: number[];
+  excludedFromPredictionCycleLengths: number[];
+  completedCycles: number;
+  predictionCompletedCycles: number;
+  typicalCycleLength: number | null;
+  predictionTypicalCycleLength: number | null;
+  variabilityDays: number | null;
+  variabilitySampleSize: number;
+  minimumCycleLength: number | null;
+  maximumCycleLength: number | null;
+  hasMeaningfulVariability: boolean;
+};
+
+export type CyclePredictionStatus =
+  | 'insufficient-history'
+  | 'limited-history'
+  | 'estimated-multiple-cycles'
+  | 'highly-variable';
+
+export type NextPeriodEstimate = {
+  status: CyclePredictionStatus;
+  isEstimate: boolean;
+  estimatedDate: string | null;
+  estimatedRange: { start: string; end: string } | null;
+  basedOnCompletedCycles: number;
+  typicalCycleLength: number | null;
+};
+
+export type EstimatedCyclePhase =
+  | 'menstrual'
+  | 'follicular'
+  | 'mid-cycle'
+  | 'luteal';
+
+export type CyclePhaseEstimate = {
+  status: 'estimated' | 'insufficient-data';
+  confidence: CyclePredictionStatus;
+  isEstimate: boolean;
+  phase: EstimatedCyclePhase | null;
+  label: string | null;
+  cycleDay: number | null;
+  basedOnCompletedCycles: number;
+};
+
+const MIN_PREDICTION_CYCLE_LENGTH = 10;
+const MAX_PREDICTION_CYCLE_LENGTH = 120;
+const MEANINGFUL_VARIABILITY_DAYS = 3;
+const MIN_CYCLES_FOR_VARIABILITY = 3;
+
+function dateKey(value: string): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T|$)/.exec(value);
+  if (!match) return null;
+  const date = new Date(`${match[1]}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== match[1]) return null;
+  return match[1];
+}
+
+function dateDifferenceInDays(start: string, end: string): number {
+  const startTime = Date.parse(`${start}T00:00:00.000Z`);
+  const endTime = Date.parse(`${end}T00:00:00.000Z`);
+  return Math.round((endTime - startTime) / 86400000);
+}
+
+function addDays(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function validPeriodStartDates(events: CycleEvent[]): string[] {
+  return [...new Set(
+    events
+      .filter((event) => event.event_type === 'period_start')
+      .map((event) => dateKey(event.occurred_at))
+      .filter((value): value is string => value !== null),
+  )].sort();
+}
+
+export function deriveCompletedCycleLengths(events: CycleEvent[]): number[] {
+  const starts = validPeriodStartDates(events);
+  const lengths: number[] = [];
+  for (let index = 1; index < starts.length; index += 1) {
+    const length = dateDifferenceInDays(starts[index - 1], starts[index]);
+    if (length > 0) lengths.push(length);
+  }
+  return lengths;
+}
+
+export function calculateCycleHistory(events: CycleEvent[]): CycleHistory {
+  const cycleLengths = deriveCompletedCycleLengths(events);
+  const predictionCycleLengths = cycleLengths.filter(
+    (length) => length >= MIN_PREDICTION_CYCLE_LENGTH && length <= MAX_PREDICTION_CYCLE_LENGTH,
+  );
+  const excludedFromPredictionCycleLengths = cycleLengths.filter(
+    (length) => length < MIN_PREDICTION_CYCLE_LENGTH || length > MAX_PREDICTION_CYCLE_LENGTH,
+  );
+  const typicalCycleLength = cycleLengths.length ? median(cycleLengths) : null;
+  const predictionTypicalCycleLength = predictionCycleLengths.length
+    ? median(predictionCycleLengths)
+    : null;
+  const variabilityDays = predictionTypicalCycleLength === null
+    ? null
+    : median(predictionCycleLengths.map((length) => Math.abs(length - predictionTypicalCycleLength)));
+  const minimumCycleLength = cycleLengths.length ? Math.min(...cycleLengths) : null;
+  const maximumCycleLength = cycleLengths.length ? Math.max(...cycleLengths) : null;
+  const hasMeaningfulVariability = predictionCycleLengths.length >= MIN_CYCLES_FOR_VARIABILITY
+    && (
+      (variabilityDays !== null && variabilityDays >= MEANINGFUL_VARIABILITY_DAYS)
+      || Math.max(...predictionCycleLengths) - Math.min(...predictionCycleLengths) >= 7
+    );
+  return {
+    cycleLengths,
+    predictionCycleLengths,
+    excludedFromPredictionCycleLengths,
+    completedCycles: cycleLengths.length,
+    predictionCompletedCycles: predictionCycleLengths.length,
+    typicalCycleLength,
+    predictionTypicalCycleLength,
+    variabilityDays,
+    variabilitySampleSize: predictionCycleLengths.length,
+    minimumCycleLength,
+    maximumCycleLength,
+    hasMeaningfulVariability,
+  };
+}
+
+export function estimateNextPeriod(events: CycleEvent[]): NextPeriodEstimate {
+  const history = calculateCycleHistory(events);
+  const starts = validPeriodStartDates(events);
+  const predictionTypicalCycleLength = history.predictionTypicalCycleLength;
+  if (predictionTypicalCycleLength === null || !history.predictionCompletedCycles || !starts.length) {
+    return {
+      status: 'insufficient-history',
+      isEstimate: false,
+      estimatedDate: null,
+      estimatedRange: null,
+      basedOnCompletedCycles: history.predictionCompletedCycles,
+      typicalCycleLength: predictionTypicalCycleLength,
+    };
+  }
+  const estimatedDate = addDays(starts[starts.length - 1], predictionTypicalCycleLength);
+  const status: CyclePredictionStatus = history.predictionCompletedCycles === 1
+    ? 'limited-history'
+    : history.hasMeaningfulVariability
+      ? 'highly-variable'
+      : 'estimated-multiple-cycles';
+  const estimatedRange = history.hasMeaningfulVariability
+    ? {
+        start: addDays(starts[starts.length - 1], Math.min(...history.predictionCycleLengths)),
+        end: addDays(starts[starts.length - 1], Math.max(...history.predictionCycleLengths)),
+      }
+    : null;
+  return {
+    status,
+    isEstimate: true,
+    estimatedDate,
+    estimatedRange,
+    basedOnCompletedCycles: history.predictionCompletedCycles,
+    typicalCycleLength: predictionTypicalCycleLength,
+  };
+}
+
+export function estimateCyclePhase(events: CycleEvent[], onDate: string): CyclePhaseEstimate {
+  const history = calculateCycleHistory(events);
+  const targetDate = dateKey(onDate);
+  const starts = validPeriodStartDates(events);
+  const latestStart = starts.filter((start) => targetDate !== null && start <= targetDate).at(-1);
+  const predictionTypicalCycleLength = history.predictionTypicalCycleLength;
+  const confidence: CyclePredictionStatus = history.predictionCompletedCycles === 1
+    ? 'limited-history'
+    : history.hasMeaningfulVariability
+      ? 'highly-variable'
+      : 'estimated-multiple-cycles';
+  const insufficient = (reason: CyclePredictionStatus): CyclePhaseEstimate => ({
+    status: 'insufficient-data',
+    confidence: reason,
+    isEstimate: false,
+    phase: null,
+    label: null,
+    cycleDay: null,
+    basedOnCompletedCycles: history.predictionCompletedCycles,
+  });
+  if (!targetDate || !latestStart || predictionTypicalCycleLength === null || !history.predictionCompletedCycles) {
+    return insufficient('insufficient-history');
+  }
+  const cycleDay = dateDifferenceInDays(latestStart, targetDate) + 1;
+  const periodEndDates = events
+    .filter((event) => event.event_type === 'period_end')
+    .map((event) => dateKey(event.occurred_at))
+    .filter((value): value is string => value !== null)
+    .filter((date) => date >= latestStart);
+  const recordedPeriodEnd = periodEndDates.sort()[0];
+  const menstrualEnd = recordedPeriodEnd ?? addDays(latestStart, 4);
+  if (targetDate <= menstrualEnd) {
+    return {
+      status: 'estimated',
+      confidence,
+      isEstimate: true,
+      phase: 'menstrual',
+      label: 'Menstrual phase',
+      cycleDay,
+      basedOnCompletedCycles: history.predictionCompletedCycles,
+    };
+  }
+  if (cycleDay > Math.max(...history.predictionCycleLengths)) return insufficient('insufficient-history');
+  const midCycleStart = Math.max(7, Math.round(predictionTypicalCycleLength / 2) - 1);
+  const midCycleEnd = Math.min(predictionTypicalCycleLength, midCycleStart + 2);
+  const phase: EstimatedCyclePhase = cycleDay < midCycleStart
+    ? 'follicular'
+    : cycleDay <= midCycleEnd
+      ? 'mid-cycle'
+      : 'luteal';
+  const labels: Record<EstimatedCyclePhase, string> = {
+    menstrual: 'Menstrual phase',
+    follicular: 'Estimated follicular phase',
+    'mid-cycle': 'Estimated mid-cycle window',
+    luteal: 'Estimated luteal phase',
+  };
+  return {
+    status: 'estimated',
+    confidence,
+    isEstimate: true,
+    phase,
+    label: labels[phase],
+    cycleDay,
+    basedOnCompletedCycles: history.predictionCompletedCycles,
+  };
+}
+
 export const emptyUserData = (): UserData => ({ checkIns: [], medications: [], journal: [] });
 
 export function recordsForOwner<T extends { ownerId: string }>(records: T[], ownerId: string): T[] {
