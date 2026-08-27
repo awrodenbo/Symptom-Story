@@ -47,8 +47,9 @@ import {
   updatePassword,
 } from "../src/auth";
 import { isSupabaseConfigured } from "../src/supabase";
+import CycleScreen from "../src/CycleScreen";
 
-type Tab = "Home" | "Check-In" | "Trends" | "Journal" | "Profile";
+type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
 const C = {
   ink: "#25342E",
   muted: "#68766F",
@@ -62,6 +63,7 @@ const C = {
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
   ["Check-In", "heart-outline"],
+  ["Cycle", "calendar-outline"],
   ["Trends", "stats-chart-outline"],
   ["Journal", "book-outline"],
   ["Profile", "person-outline"],
@@ -882,6 +884,13 @@ export default function App() {
   }
   let body: React.ReactNode;
   if (safety) body = <Safety close={() => setSafety(false)} />;
+  else if (tab === "Cycle")
+    body = (
+      <CycleScreen
+        onCheckIn={() => setTab("Check-In")}
+        reducedMotion={reducedMotion}
+      />
+    );
   else if (tab === "Check-In")
     body = (
       <CheckIn
