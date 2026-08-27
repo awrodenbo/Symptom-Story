@@ -34,6 +34,7 @@ import {
   type MedicationRow,
   type Profile,
 } from "../src/api";
+import MyPatternsScreen from "../src/MyPatternsScreen";
 import {
   friendlyAuthError,
   getCurrentSession,
@@ -1111,6 +1112,7 @@ export default function App() {
             ))}
           </>
         )}
+        <MyPatternsScreen checkIns={data.checkIns} />
       </ScrollView>
     );
   } else if (tab === "Journal") {

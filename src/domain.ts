@@ -82,6 +82,31 @@ export type CyclePhaseEstimate = {
   basedOnCompletedCycles: number;
 };
 
+export type PatternCheckIn = {
+  entry_date: string;
+  mood: number;
+  sleep: number | null;
+  energy: number | null;
+  symptoms: string[];
+  feelings?: string[] | null;
+};
+
+export type PatternObservation = {
+  kind: 'frequency' | 'average';
+  label: string;
+  detail: string;
+  cycles: number;
+  checkIns: number;
+};
+
+export type PatternAnalysis = {
+  status: 'insufficient-data' | 'observations';
+  completedCycles: number;
+  checkInsInWindow: number;
+  observations: PatternObservation[];
+  disclaimer: string;
+};
+
 const MIN_PREDICTION_CYCLE_LENGTH = 10;
 const MAX_PREDICTION_CYCLE_LENGTH = 120;
 const MEANINGFUL_VARIABILITY_DAYS = 3;
@@ -122,6 +147,74 @@ function validPeriodStartDates(events: CycleEvent[]): string[] {
       .map((event) => dateKey(event.event_date))
       .filter((value): value is string => value !== null),
   )].sort();
+}
+
+function differenceInCalendarDays(start: string, end: string): number {
+  return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
+}
+
+const patternDisclaimer = 'Patterns in your personal logs show associations, not cause, diagnosis, or medical advice.';
+
+export function analyzePatterns(events: CycleEvent[], checkIns: PatternCheckIn[]): PatternAnalysis {
+  const starts = validPeriodStartDates(events);
+  const cycles = starts.slice(0, -1).map((start, index) => ({
+    start,
+    end: starts[index + 1],
+  })).filter((cycle) => differenceInCalendarDays(cycle.start, cycle.end) > 0);
+  const usableCycles = cycles.slice(-4);
+  const windows = usableCycles.map((cycle) => ({
+    ...cycle,
+    checkIns: checkIns.filter((checkIn) => {
+      const daysBefore = differenceInCalendarDays(checkIn.entry_date, cycle.end);
+      return daysBefore >= 5 && daysBefore <= 7;
+    }),
+  }));
+  const windowCheckIns = windows.flatMap((window) => window.checkIns);
+  if (usableCycles.length < 3 || windowCheckIns.length < 3) {
+    return { status: 'insufficient-data', completedCycles: usableCycles.length, checkInsInWindow: windowCheckIns.length, observations: [], disclaimer: patternDisclaimer };
+  }
+  const observations: PatternObservation[] = [];
+  const values = new Map<string, { count: number; cycles: Set<number> }>();
+  for (const [cycleIndex, window] of windows.entries()) {
+    const seen = new Set<string>();
+    for (const checkIn of window.checkIns) {
+      for (const value of [...checkIn.symptoms, ...(checkIn.feelings ?? [])]) {
+        if (seen.has(value)) continue;
+        seen.add(value);
+        const current = values.get(value) ?? { count: 0, cycles: new Set<number>() };
+        current.count += 1;
+        current.cycles.add(cycleIndex);
+        values.set(value, current);
+      }
+    }
+  }
+  for (const [value, result] of values) {
+    if (result.cycles.size >= 3 && result.count / windows.length >= 0.6) {
+      observations.push({ kind: 'frequency', label: value, detail: `You logged ${value.toLowerCase()} more often 5–7 days before your period across ${result.cycles.size} cycles.`, cycles: result.cycles.size, checkIns: result.count });
+    }
+  }
+  const averageObservation = (field: 'mood' | 'sleep' | 'energy', label: string, direction: 'higher' | 'lower') => {
+    const cycleAverages = windows.map((window) => {
+      const valuesForCycle = window.checkIns.map((checkIn) => checkIn[field]).filter((value): value is number => value !== null);
+      return valuesForCycle.length ? valuesForCycle.reduce((sum, value) => sum + value, 0) / valuesForCycle.length : null;
+    });
+    const populated = cycleAverages.filter((value): value is number => value !== null);
+    if (populated.length < 3) return;
+    const overall = checkIns.map((checkIn) => checkIn[field]).filter((value): value is number => value !== null);
+    if (!overall.length) return;
+    const windowAverage = populated.reduce((sum, value) => sum + value, 0) / populated.length;
+    const overallAverage = overall.reduce((sum, value) => sum + value, 0) / overall.length;
+    const supports = direction === 'lower'
+      ? populated.filter((value) => value < overallAverage).length
+      : populated.filter((value) => value > overallAverage).length;
+    if (supports >= 3 && Math.abs(windowAverage - overallAverage) >= 0.5) {
+      observations.push({ kind: 'average', label, detail: `Your average ${label.toLowerCase()} was ${direction} in the pre-period window in ${supports} of your last ${populated.length} cycles.`, cycles: supports, checkIns: windowCheckIns.length });
+    }
+  };
+  averageObservation('mood', 'mood', 'lower');
+  averageObservation('energy', 'energy', 'lower');
+  averageObservation('sleep', 'sleep', 'lower');
+  return { status: observations.length ? 'observations' : 'insufficient-data', completedCycles: usableCycles.length, checkInsInWindow: windowCheckIns.length, observations: observations.slice(0, 5), disclaimer: patternDisclaimer };
 }
 
 export function deriveCompletedCycleLengths(events: CycleEvent[]): number[] {

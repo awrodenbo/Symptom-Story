@@ -4,8 +4,10 @@ import {
   deleteAccountData, deleteOwnedRecord, emptyUserData, exportUserData,
   findProhibitedPhrases, recordsForOwner, saveOwnedRecord, shouldShowSafetySupport,
   calculateCycleHistory, deriveCompletedCycleLengths, estimateCyclePhase, estimateNextPeriod,
+  analyzePatterns,
   type CheckIn, type JournalEntry, type MedicationLog,
   type CycleEvent,
+  type PatternCheckIn,
 } from '../src/domain.ts';
 
 const alex = 'user-alex';
@@ -224,6 +226,85 @@ test('phase estimation returns insufficient data before history or beyond observ
   ];
   assert.equal(estimateCyclePhase(events, '2025-12-31').status, 'insufficient-data');
   assert.equal(estimateCyclePhase(events, '2026-02-27').status, 'insufficient-data');
+});
+
+const patternCheckIn = (entry_date: string, values: Partial<PatternCheckIn> = {}): PatternCheckIn => ({
+  entry_date, mood: 3, sleep: 3, energy: 3, symptoms: [], feelings: [], ...values,
+});
+
+test('patterns report insufficient data without enough cycles or check-ins', () => {
+  const events = [cycleEvent('period_start', '2026-01-01'), cycleEvent('period_start', '2026-01-29')];
+  const result = analyzePatterns(events, [patternCheckIn('2026-01-24')]);
+  assert.equal(result.status, 'insufficient-data');
+  assert.equal(result.observations.length, 0);
+});
+
+test('patterns surface a recurring pre-period symptom and feeling across cycles', () => {
+  const events = [
+    cycleEvent('period_start', '2026-01-01'), cycleEvent('period_start', '2026-01-29'),
+    cycleEvent('period_start', '2026-02-26'), cycleEvent('period_start', '2026-03-26'),
+  ];
+  const checkIns = [
+    patternCheckIn('2026-01-22', { symptoms: ['Nausea'], feelings: ['Anxious'] }),
+    patternCheckIn('2026-02-20', { symptoms: ['Nausea'], feelings: ['Anxious'] }),
+    patternCheckIn('2026-03-20', { symptoms: ['Nausea'], feelings: ['Anxious'] }),
+  ];
+  const result = analyzePatterns(events, checkIns);
+  assert.equal(result.status, 'observations');
+  assert.equal(result.observations.length, 2);
+  assert.match(result.observations[0].detail, /5–7 days before your period across 3 cycles/);
+  assert.doesNotMatch(result.observations.map((observation) => observation.detail).join(' '), /causes|diagnos|indicates/i);
+  assert.match(result.disclaimer, /associations|cause|diagnosis/i);
+});
+
+test('random symptoms do not become a recurring pattern', () => {
+  const events = [
+    cycleEvent('period_start', '2026-01-01'), cycleEvent('period_start', '2026-01-29'),
+    cycleEvent('period_start', '2026-02-26'), cycleEvent('period_start', '2026-03-26'),
+  ];
+  const result = analyzePatterns(events, [
+    patternCheckIn('2026-01-22', { symptoms: ['Nausea'] }),
+    patternCheckIn('2026-02-10', { symptoms: ['Nausea'] }),
+    patternCheckIn('2026-03-01', { symptoms: ['Nausea'] }),
+  ]);
+  assert.equal(result.observations.some((observation) => observation.label === 'Nausea'), false);
+});
+
+test('patterns summarize mood, energy, sleep, missing days, and physical GI data', () => {
+  const events = [
+    cycleEvent('period_start', '2026-01-01'), cycleEvent('period_start', '2026-01-29'),
+    cycleEvent('period_start', '2026-02-26'), cycleEvent('period_start', '2026-03-26'),
+  ];
+  const checkIns = [
+    patternCheckIn('2026-01-22', { mood: 1, energy: 1, sleep: 1, symptoms: ['Bloating'] }),
+    patternCheckIn('2026-02-20', { mood: 1, energy: 1, sleep: 1, symptoms: ['Bloating'] }),
+    patternCheckIn('2026-03-20', { mood: 1, energy: 1, sleep: 1, symptoms: ['Bloating'] }),
+    patternCheckIn('2026-01-10', { mood: 5, energy: 5, sleep: 5 }),
+  ];
+  const result = analyzePatterns(events, checkIns);
+  assert.equal(result.status, 'observations');
+  assert.ok(result.observations.some((observation) => observation.label === 'mood'));
+  assert.ok(result.observations.some((observation) => observation.label === 'energy'));
+  assert.ok(result.observations.some((observation) => observation.label === 'sleep'));
+  assert.ok(result.observations.some((observation) => observation.label === 'Bloating'));
+  assert.equal(result.checkInsInWindow, 3);
+});
+
+test('patterns retain long variable cycle history without diagnostic labeling', () => {
+  const events = [
+    cycleEvent('period_start', '2025-01-01'),
+    cycleEvent('period_start', '2025-05-31'),
+    cycleEvent('period_start', '2025-07-15'),
+    cycleEvent('period_start', '2025-11-12'),
+  ];
+  const result = analyzePatterns(events, [
+    patternCheckIn('2025-05-25', { symptoms: ['Bloating'] }),
+    patternCheckIn('2025-07-09', { symptoms: ['Bloating'] }),
+    patternCheckIn('2025-11-06', { symptoms: ['Bloating'] }),
+  ]);
+  assert.equal(result.completedCycles, 3);
+  assert.equal(result.status, 'observations');
+  assert.doesNotMatch(JSON.stringify(result.observations), /abnormal|irregular|PCOS/i);
 });
 
 test('cycle calculations use intended local dates instead of UTC timestamp dates', () => {
