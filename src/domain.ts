@@ -27,10 +27,13 @@ export type UserData = {
 };
 
 export type CycleEventType = 'period_start' | 'period_end' | 'spotting' | 'flow';
+export type CycleFlowLevel = 'light' | 'medium' | 'heavy' | 'very_heavy';
 
 export type CycleEvent = {
   event_type: CycleEventType;
+  event_date: string;
   occurred_at: string;
+  flow_level?: CycleFlowLevel | null;
 };
 
 export type CycleHistory = {
@@ -116,7 +119,7 @@ function validPeriodStartDates(events: CycleEvent[]): string[] {
   return [...new Set(
     events
       .filter((event) => event.event_type === 'period_start')
-      .map((event) => dateKey(event.occurred_at))
+      .map((event) => dateKey(event.event_date))
       .filter((value): value is string => value !== null),
   )].sort();
 }

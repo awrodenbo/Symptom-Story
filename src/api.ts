@@ -1,11 +1,27 @@
-import { supabase } from './supabase';
-import { signOut } from './auth';
+import { supabase } from './supabase.ts';
+import { signOut } from './auth.ts';
+import { createCycleApi } from './cycle-api.ts';
+import type { CycleDataClient } from './cycle-api.ts';
+export type {
+  CycleEventInput,
+  CycleEventRow,
+  CycleSettingsRow,
+  CycleSettingsUpdate,
+} from './cycle-api.ts';
 
 export type Profile = { display_name: string; tracking_mode: 'pmdd' | 'postpartum'; onboarding_complete: boolean };
 export type CheckInRow = { id: string; user_id: string; entry_date: string; mood: number; sleep: number | null; energy: number | null; symptoms: string[]; medication_taken: boolean | null; reflection: string | null; created_at: string };
 export type MedicationRow = { id: string; user_id: string; name: string; schedule: string | null; created_at: string };
 export type MedicationLogRow = { id: string; user_id: string; medication_id: string; taken_at: string };
 export type JournalRow = { id: string; user_id: string; body: string; created_at: string };
+export const {
+  loadCycleSettings,
+  updateCycleSettings,
+  loadCycleEvents,
+  createCycleEvent,
+  updateCycleEvent,
+  deleteCycleEvent,
+} = createCycleApi(supabase as unknown as CycleDataClient);
 
 function today() { return new Date().toISOString().slice(0, 10); }
 function fail(error: { message: string } | null) { if (error) throw new Error(error.message); }

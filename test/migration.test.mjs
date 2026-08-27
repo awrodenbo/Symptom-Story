@@ -5,6 +5,7 @@ import { test } from 'node:test';
 const sql = readFileSync(new URL('../supabase/migrations/202607280001_initial.sql', import.meta.url), 'utf8');
 const medicationOwnershipSql = readFileSync(new URL('../supabase/migrations/202608270001_medication_log_ownership.sql', import.meta.url), 'utf8');
 const cycleSql = readFileSync(new URL('../supabase/migrations/202608270002_cycle_tracker_foundation.sql', import.meta.url), 'utf8');
+const cycleDateSql = readFileSync(new URL('../supabase/migrations/202608270003_cycle_event_local_date.sql', import.meta.url), 'utf8');
 const tables = ['profiles', 'check_ins', 'medications', 'medication_logs', 'journal_entries'];
 
 test('every user-data table enables row-level security', () => {
@@ -56,4 +57,10 @@ test('cycle settings validate reminder configuration', () => {
   assert.match(cycleSql, /intimacy_tracking_enabled boolean not null default false/i);
   assert.match(cycleSql, /reminder_enabled boolean not null default false/i);
   assert.match(cycleSql, /reminder_days_before smallint not null default 7 check \(reminder_days_before between 1 and 14\)/i);
+});
+
+test('cycle events have a required local calendar date and date-aware index', () => {
+  assert.match(cycleDateSql, /add column event_date date/i);
+  assert.match(cycleDateSql, /alter column event_date set not null/i);
+  assert.match(cycleDateSql, /cycle_events_user_event_date_occurred_at_idx[\s\S]+\(user_id, event_date, occurred_at\)/i);
 });

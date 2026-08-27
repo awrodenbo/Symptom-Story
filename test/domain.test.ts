@@ -61,7 +61,7 @@ test('inclusive-language check identifies prohibited phrases', () => {
   assert.deepEqual(findProhibitedPhrases('Designed for people diagnosed with PMDD.'), []);
 });
 
-const cycleEvent = (event_type: CycleEvent['event_type'], occurred_at: string): CycleEvent => ({ event_type, occurred_at });
+const cycleEvent = (event_type: CycleEvent['event_type'], occurred_at: string, event_date = occurred_at.slice(0, 10)): CycleEvent => ({ event_type, event_date, occurred_at });
 
 test('cycle history reports insufficient data without period starts', () => {
   assert.deepEqual(calculateCycleHistory([]), {
@@ -224,4 +224,13 @@ test('phase estimation returns insufficient data before history or beyond observ
   ];
   assert.equal(estimateCyclePhase(events, '2025-12-31').status, 'insufficient-data');
   assert.equal(estimateCyclePhase(events, '2026-02-27').status, 'insufficient-data');
+});
+
+test('cycle calculations use intended local dates instead of UTC timestamp dates', () => {
+  const events = [
+    cycleEvent('period_start', '2026-01-02T00:30:00+02:00', '2026-01-02'),
+    cycleEvent('period_start', '2026-01-31T23:30:00-05:00', '2026-01-31'),
+    cycleEvent('period_start', '2026-03-01T00:15:00+02:00', '2026-03-01'),
+  ];
+  assert.deepEqual(deriveCompletedCycleLengths(events), [29, 29]);
 });
