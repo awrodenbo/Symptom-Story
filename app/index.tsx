@@ -49,6 +49,7 @@ import {
 } from "../src/auth";
 import { isSupabaseConfigured } from "../src/supabase";
 import CycleScreen from "../src/CycleScreen";
+import TodaysSupport from "../src/TodaysSupport";
 
 type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
 const C = {
@@ -1003,6 +1004,10 @@ export default function App() {
         <Text style={s.kicker}>TODAY</Text>
         <Text style={s.title}>Hello, {profile.display_name}</Text>
         <Text style={s.subtitle}>A small moment for yourself is enough.</Text>
+        <TodaysSupport
+          checkIns={data.checkIns}
+          onCheckIn={() => setTab("Check-In")}
+        />
         {message && <Notice text={message} />}{" "}
         {error && <Notice error text={error} />}
         <Card>

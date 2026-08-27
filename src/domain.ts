@@ -157,6 +157,83 @@ export function selectSupportRecommendations(context: SupportRecommendationConte
   ];
 }
 
+export type TodaysSupportInput = {
+  today: string;
+  checkIn?: PatternCheckIn;
+  cycleEvents: CycleEvent[];
+  cycleSettings?: { reminder_days_before: number } | null;
+  prePeriodPlan?: { body: string } | null;
+  establishedPatterns?: PatternAnalysis | null;
+};
+
+export type TodaysSupport = {
+  hasCheckIn: boolean;
+  summary: string;
+  context: string;
+  recommendations: SupportRecommendation[];
+  pattern: PatternObservation | null;
+  disclaimer: string;
+};
+
+export function buildTodaysSupport(input: TodaysSupportInput): TodaysSupport {
+  const latestStart = [...input.cycleEvents]
+    .filter((event) => event.event_type === 'period_start' && event.event_date <= input.today)
+    .sort((left, right) => right.event_date.localeCompare(left.event_date))[0];
+  const latestEnd = latestStart
+    ? [...input.cycleEvents]
+      .filter((event) => event.event_type === 'period_end' && event.event_date >= latestStart.event_date)
+      .sort((left, right) => left.event_date.localeCompare(right.event_date))[0]
+    : undefined;
+  const currentlyBleeding = Boolean(latestStart && (!latestEnd || latestEnd.event_date >= input.today));
+  const nextPeriod = estimateNextPeriod(input.cycleEvents);
+  const daysUntilPeriod = nextPeriod.estimatedDate
+    ? dateDifferenceInDays(input.today, nextPeriod.estimatedDate)
+    : null;
+  const inPrePeriodWindow = daysUntilPeriod !== null
+    && daysUntilPeriod >= 0
+    && daysUntilPeriod <= (input.cycleSettings?.reminder_days_before ?? 7);
+  const phase = estimateCyclePhase(input.cycleEvents, input.today);
+  const checkIn = input.checkIn;
+  const pattern = input.establishedPatterns?.status === 'observations'
+    ? input.establishedPatterns.observations[0] ?? null
+    : null;
+  const symptoms = checkIn?.symptoms ?? [];
+  const feelings = checkIn?.feelings ?? [];
+  const reportedParts = [
+    checkIn?.energy !== null && checkIn?.energy !== undefined ? `${checkIn.energy <= 2 ? 'lower' : checkIn.energy >= 4 ? 'higher' : 'moderate'} energy` : null,
+    symptoms.length ? `${symptoms.slice(0, 2).join(' and ').toLowerCase()}${symptoms.length > 2 ? ' and other symptoms' : ''}` : null,
+    feelings.length ? `${feelings.slice(0, 2).join(' and ').toLowerCase()}${feelings.length > 2 ? ' and other feelings' : ''}` : null,
+  ].filter((part): part is string => Boolean(part));
+  const summary = checkIn
+    ? `You reported ${reportedParts.length ? reportedParts.join(' and ') : 'a check-in'} today.`
+    : 'You have not checked in today.';
+  const context = currentlyBleeding
+    ? 'Your recorded history shows that you may be bleeding today.'
+    : nextPeriod.estimatedDate
+      ? `Your recorded history suggests your next period may be approaching around ${nextPeriod.estimatedDate}.`
+      : phase.status === 'estimated'
+        ? `Your recorded history gives an estimated ${phase.label?.toLowerCase() ?? 'cycle context'}.`
+        : 'Cycle context is not available yet.';
+  const recommendations = selectSupportRecommendations({
+    phase: phase.phase,
+    mood: checkIn?.mood ?? null,
+    energy: checkIn?.energy ?? null,
+    feelings,
+    symptoms,
+    currentlyBleeding,
+    inPrePeriodWindow,
+    hasPrePeriodPlan: Boolean(input.prePeriodPlan?.body.trim()),
+  });
+  return {
+    hasCheckIn: Boolean(checkIn),
+    summary,
+    context,
+    recommendations,
+    pattern,
+    disclaimer: recommendationDisclaimer,
+  };
+}
+
 const MIN_PREDICTION_CYCLE_LENGTH = 10;
 const MAX_PREDICTION_CYCLE_LENGTH = 120;
 const MEANINGFUL_VARIABILITY_DAYS = 3;

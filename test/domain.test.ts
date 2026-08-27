@@ -6,6 +6,7 @@ import {
   calculateCycleHistory, deriveCompletedCycleLengths, estimateCyclePhase, estimateNextPeriod,
   analyzePatterns,
   recommendationDisclaimer, selectSupportRecommendations,
+  buildTodaysSupport,
   type CheckIn, type JournalEntry, type MedicationLog,
   type CycleEvent,
   type PatternCheckIn,
@@ -316,6 +317,66 @@ function recommendations(overrides: Partial<SupportRecommendationContext> = {}) 
     ...overrides,
   });
 }
+
+const supportCheckIn = (values: Partial<PatternCheckIn> = {}): PatternCheckIn => ({
+  entry_date: '2026-03-20', mood: 3, sleep: 3, energy: 3, symptoms: [], feelings: [], ...values,
+});
+
+const supportEvents = [
+  cycleEvent('period_start', '2026-01-01'),
+  cycleEvent('period_start', '2026-01-29'),
+  cycleEvent('period_start', '2026-02-26'),
+];
+
+test('Today\'s Support prioritizes reported symptoms and energy', () => {
+  const result = buildTodaysSupport({
+    today: '2026-03-20', checkIn: supportCheckIn({ energy: 1, symptoms: ['Pelvic pain'], feelings: ['Overwhelmed'] }),
+    cycleEvents: supportEvents, cycleSettings: null, prePeriodPlan: null,
+  });
+  assert.match(result.summary, /lower energy and pelvic pain and overwhelmed/i);
+  assert.match(result.recommendations.find((item) => item.category === 'Move')?.detail ?? '', /rest|gentle/i);
+});
+
+test('Today\'s Support does not infer feelings when there is no Check-In', () => {
+  const result = buildTodaysSupport({ today: '2026-03-20', cycleEvents: [], cycleSettings: null, prePeriodPlan: null });
+  assert.equal(result.hasCheckIn, false);
+  assert.match(result.summary, /not checked in today/i);
+  assert.doesNotMatch(result.summary, /energy|symptom|feeling/i);
+  assert.equal(result.recommendations.length, 3);
+});
+
+test('Today\'s Support handles insufficient cycle history while keeping generic support', () => {
+  const result = buildTodaysSupport({ today: '2026-03-20', checkIn: supportCheckIn({ energy: 4 }), cycleEvents: [], cycleSettings: null, prePeriodPlan: null });
+  assert.match(result.context, /not available/i);
+  assert.equal(result.recommendations.length, 3);
+});
+
+test('Today\'s Support includes recorded bleeding context and active plan window', () => {
+  const bleedingEvents = [
+    cycleEvent('period_start', '2026-02-01'),
+    cycleEvent('period_start', '2026-03-01'),
+  ];
+  const bleeding = buildTodaysSupport({ today: '2026-03-03', checkIn: { ...supportCheckIn(), entry_date: '2026-03-03', symptoms: ['Nausea'] }, cycleEvents: bleedingEvents, cycleSettings: { reminder_days_before: 7 }, prePeriodPlan: { body: 'Rest and ask for support.' } });
+  assert.match(bleeding.context, /bleeding/i);
+  assert.match(bleeding.recommendations.find((item) => item.category === 'Eat')?.detail ?? '', /simple|tolerable|fluids/i);
+
+  const completedSupportEvents = [...supportEvents, cycleEvent('period_end', '2026-02-28')];
+  const prePeriod = buildTodaysSupport({ today: '2026-03-20', checkIn: supportCheckIn(), cycleEvents: completedSupportEvents, cycleSettings: { reminder_days_before: 7 }, prePeriodPlan: { body: 'My plan.' } });
+  assert.match(prePeriod.recommendations.find((item) => item.category === 'Restore')?.title ?? '', /support plan/i);
+});
+
+test('Today\'s Support shows an established pattern without overriding reported state', () => {
+  const pattern = { kind: 'frequency' as const, label: 'Anxiety', detail: 'You logged anxiety more often 5–7 days before your period across 3 cycles.', cycles: 3, checkIns: 3 };
+  const result = buildTodaysSupport({ today: '2026-03-20', checkIn: supportCheckIn({ energy: 5 }), cycleEvents: [...supportEvents, cycleEvent('period_end', '2026-02-28')], cycleSettings: null, prePeriodPlan: null, establishedPatterns: { status: 'observations', completedCycles: 3, checkInsInWindow: 3, observations: [pattern], disclaimer: 'Associations are not causation.' } });
+  assert.equal(result.pattern, pattern);
+  assert.match(result.recommendations.find((item) => item.category === 'Move')?.detail ?? '', /normal preferred exercise|moderate/i);
+});
+
+test('Today\'s Support text remains descriptive and non-medical', () => {
+  const result = buildTodaysSupport({ today: '2026-03-20', checkIn: supportCheckIn({ symptoms: ['Bloating'], feelings: ['Anxious'] }), cycleEvents: supportEvents, cycleSettings: { reminder_days_before: 7 }, prePeriodPlan: { body: 'My plan.' } });
+  const output = JSON.stringify(result);
+  assert.doesNotMatch(output, /diagnos|caus|fertility|pregnan|ovulat|hormone|medication/i);
+});
 
 test('low energy and symptoms override phase assumptions for movement', () => {
   const move = recommendations({ energy: 1, symptoms: ['Pelvic pain'] }).find((item) => item.category === 'Move');
