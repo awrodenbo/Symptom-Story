@@ -6,6 +6,7 @@ const sql = readFileSync(new URL('../supabase/migrations/202607280001_initial.sq
 const medicationOwnershipSql = readFileSync(new URL('../supabase/migrations/202608270001_medication_log_ownership.sql', import.meta.url), 'utf8');
 const cycleSql = readFileSync(new URL('../supabase/migrations/202608270002_cycle_tracker_foundation.sql', import.meta.url), 'utf8');
 const cycleDateSql = readFileSync(new URL('../supabase/migrations/202608270003_cycle_event_local_date.sql', import.meta.url), 'utf8');
+const feelingsSql = readFileSync(new URL('../supabase/migrations/202608270004_check_in_feelings.sql', import.meta.url), 'utf8');
 const tables = ['profiles', 'check_ins', 'medications', 'medication_logs', 'journal_entries'];
 
 test('every user-data table enables row-level security', () => {
@@ -63,4 +64,9 @@ test('cycle events have a required local calendar date and date-aware index', ()
   assert.match(cycleDateSql, /add column event_date date/i);
   assert.match(cycleDateSql, /alter column event_date set not null/i);
   assert.match(cycleDateSql, /cycle_events_user_event_date_occurred_at_idx[\s\S]+\(user_id, event_date, occurred_at\)/i);
+});
+
+test('check-ins add optional feelings storage without changing the mood score', () => {
+  assert.match(feelingsSql, /alter table public\.check_ins\s+add column feelings text\[\] not null default '\{\}'/i);
+  assert.match(sql, /mood smallint not null check \(mood between 1 and 5\)/i);
 });

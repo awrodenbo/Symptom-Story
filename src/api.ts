@@ -10,7 +10,7 @@ export type {
 } from './cycle-api.ts';
 
 export type Profile = { display_name: string; tracking_mode: 'pmdd' | 'postpartum'; onboarding_complete: boolean };
-export type CheckInRow = { id: string; user_id: string; entry_date: string; mood: number; sleep: number | null; energy: number | null; symptoms: string[]; medication_taken: boolean | null; reflection: string | null; created_at: string };
+export type CheckInRow = { id: string; user_id: string; entry_date: string; mood: number; sleep: number | null; energy: number | null; symptoms: string[]; feelings?: string[] | null; medication_taken: boolean | null; reflection: string | null; created_at: string };
 export type MedicationRow = { id: string; user_id: string; name: string; schedule: string | null; created_at: string };
 export type MedicationLogRow = { id: string; user_id: string; medication_id: string; taken_at: string };
 export type JournalRow = { id: string; user_id: string; body: string; created_at: string };
@@ -43,7 +43,7 @@ export async function saveProfile(userId: string, profile: Omit<Profile, 'onboar
 }
 
 export async function saveCheckIn(userId: string, values: Omit<CheckInRow, 'id'|'user_id'|'created_at'|'entry_date'>) {
-  const result = await supabase.from('check_ins').upsert({ user_id: userId, entry_date: today(), ...values }, { onConflict: 'user_id,entry_date' }).select().single(); fail(result.error); return result.data as CheckInRow;
+  const result = await supabase.from('check_ins').upsert({ user_id: userId, entry_date: today(), feelings: [], ...values }, { onConflict: 'user_id,entry_date' }).select().single(); fail(result.error); return result.data as CheckInRow;
 }
 
 export async function deleteCheckIn(id: string) { const result = await supabase.from('check_ins').delete().eq('id', id); fail(result.error); }

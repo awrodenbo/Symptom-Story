@@ -76,6 +76,33 @@ const symptoms = [
   "Headache",
   "Cramps",
 ];
+const additionalSymptoms = [
+  "Bloating",
+  "Nausea",
+  "Diarrhea",
+  "Constipation",
+  "Abdominal discomfort",
+  "Appetite changes",
+  "Pelvic pain",
+  "Breast tenderness",
+  "Back pain/body aches",
+  "Sleep disturbance",
+  "Brain fog/difficulty concentrating",
+  "Dizziness",
+];
+const feelings = [
+  "Anxious",
+  "Irritable",
+  "Sad/low",
+  "Angry",
+  "Overwhelmed",
+  "Emotionally sensitive",
+  "Restless",
+  "Calm",
+  "Content",
+  "Happy",
+  "Hopeful",
+];
 
 function Button({
   label,
@@ -500,6 +527,10 @@ function CheckIn({
   const [sleep, setSleep] = useState(existing?.sleep ?? 3);
   const [energy, setEnergy] = useState(existing?.energy ?? 3);
   const [selected, setSelected] = useState<string[]>(existing?.symptoms ?? []);
+  const [selectedFeelings, setSelectedFeelings] = useState<string[]>(
+    existing?.feelings ?? [],
+  );
+  const [showMoreSymptoms, setShowMoreSymptoms] = useState(false);
   const [med, setMed] = useState<boolean | null>(
     existing?.medication_taken ?? null,
   );
@@ -508,6 +539,7 @@ function CheckIn({
   const [error, setError] = useState("");
   const sections = [
     "Mood",
+    "Feelings",
     "Sleep",
     "Energy",
     "Symptoms",
@@ -528,6 +560,7 @@ function CheckIn({
         sleep,
         energy,
         symptoms: selected,
+        feelings: selectedFeelings,
         medication_taken: med,
         reflection: reflection.trim() || null,
       });
@@ -599,15 +632,39 @@ function CheckIn({
             </>
           ) : step === 1 ? (
             <>
+              <Text style={s.prompt}>What are you feeling?</Text>
+              <Text style={s.muted}>Optional. Choose any that fit today.</Text>
+              <View style={s.wrap}>
+                {feelings.map((x) => (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selectedFeelings.includes(x) }}
+                    key={x}
+                    onPress={() =>
+                      setSelectedFeelings(
+                        selectedFeelings.includes(x)
+                          ? selectedFeelings.filter((y) => y !== x)
+                          : [...selectedFeelings, x],
+                      )
+                    }
+                    style={[s.chip, selectedFeelings.includes(x) && s.chipOn]}
+                  >
+                    <Text style={s.chipText}>{x}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          ) : step === 2 ? (
+            <>
               <Text style={s.prompt}>How restorative was your sleep?</Text>
               {scale("Sleep", sleep, setSleep)}
             </>
-          ) : step === 2 ? (
+          ) : step === 3 ? (
             <>
               <Text style={s.prompt}>How is your energy?</Text>
               {scale("Energy", energy, setEnergy)}
             </>
-          ) : step === 3 ? (
+          ) : step === 4 ? (
             <>
               <Text style={s.prompt}>What would you like to remember?</Text>
               <View style={s.wrap}>
@@ -629,8 +686,41 @@ function CheckIn({
                   </Pressable>
                 ))}
               </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showMoreSymptoms }}
+                onPress={() => setShowMoreSymptoms(!showMoreSymptoms)}
+                style={s.textButton}
+              >
+                <Text style={s.textButtonLabel}>
+                  {showMoreSymptoms
+                    ? "Show fewer physical and GI symptoms"
+                    : "Show more physical and GI symptoms"}
+                </Text>
+              </Pressable>
+              {showMoreSymptoms && (
+                <View style={s.wrap}>
+                  {additionalSymptoms.map((x) => (
+                    <Pressable
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: selected.includes(x) }}
+                      key={x}
+                      onPress={() =>
+                        setSelected(
+                          selected.includes(x)
+                            ? selected.filter((y) => y !== x)
+                            : [...selected, x],
+                        )
+                      }
+                      style={[s.chip, selected.includes(x) && s.chipOn]}
+                    >
+                      <Text style={s.chipText}>{x}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </>
-          ) : step === 4 ? (
+          ) : step === 5 ? (
             <>
               <Text style={s.prompt}>Medication taken as planned?</Text>
               <View style={s.choiceStack}>
