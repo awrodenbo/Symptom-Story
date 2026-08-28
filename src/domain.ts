@@ -428,6 +428,17 @@ export function estimateNextPeriod(events: CycleEvent[]): NextPeriodEstimate {
   };
 }
 
+export function calculatePrePeriodNotificationDate(events: CycleEvent[], reminderDaysBefore: number): string | null {
+  if (!Number.isInteger(reminderDaysBefore) || reminderDaysBefore < 1 || reminderDaysBefore > 14) {
+    return null;
+  }
+  const estimate = estimateNextPeriod(events);
+  if (!estimate.isEstimate || !estimate.estimatedDate || estimate.status === 'insufficient-history') {
+    return null;
+  }
+  return addDays(estimate.estimatedDate, -reminderDaysBefore);
+}
+
 export function estimateCyclePhase(events: CycleEvent[], onDate: string): CyclePhaseEstimate {
   const history = calculateCycleHistory(events);
   const targetDate = dateKey(onDate);

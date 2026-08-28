@@ -5,6 +5,7 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   Alert,
+  AppState,
   KeyboardAvoidingView,
   LayoutAnimation,
   Platform,
@@ -26,6 +27,7 @@ import {
   deleteJournal,
   deleteMedication,
   loadBirthControlProfile,
+  loadCycleEvents,
   loadCycleSettings,
   loadIntimacyEvents,
   loadDashboard,
@@ -51,6 +53,8 @@ import {
   updatePassword,
 } from "../src/auth";
 import { isSupabaseConfigured } from "../src/supabase";
+import * as Notifications from "expo-notifications";
+import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
 
@@ -907,6 +911,40 @@ export default function App() {
   }
   useEffect(() => {
     if (session) refresh();
+  }, [session]);
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    function handleResponse(response: Notifications.NotificationResponse | null) {
+      if (!response) return;
+      const navData = response.notification.request.content.data;
+      if (navData && typeof navData === "object" && navData.screen === "cycle") {
+        setTab("Cycle");
+      }
+    }
+    void Notifications.getLastNotificationResponseAsync().then(handleResponse);
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    return () => subscription.remove();
+  }, []);
+  useEffect(() => {
+    if (!session || Platform.OS === "web") return;
+    async function reconcileOnActive() {
+      try {
+        const [settings, events] = await Promise.all([
+          loadCycleSettings(false),
+          loadCycleEvents(),
+        ]);
+        await reconcilePrePeriodNotification(settings, events);
+      } catch {
+        // Ignore background reconciliation error
+      }
+    }
+    void reconcileOnActive();
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void reconcileOnActive();
+      }
+    });
+    return () => subscription.remove();
   }, [session]);
   const today = data?.checkIns.find(
     (x) => x.entry_date === new Date().toISOString().slice(0, 10),

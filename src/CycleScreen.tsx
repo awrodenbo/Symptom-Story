@@ -49,6 +49,10 @@ import {
   recommendationDisclaimer,
   selectSupportRecommendations,
 } from "./domain";
+import {
+  reconcilePrePeriodNotification,
+  requestNotificationPermission,
+} from "./notifications";
 
 const C = {
   ink: "#25342E",
@@ -208,6 +212,48 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
 
   useEffect(() => { load(); }, []);
   useEffect(() => setPlanDraft(plan?.body ?? ""), [plan]);
+  useEffect(() => {
+    if (settings && events) {
+      void reconcilePrePeriodNotification(settings, events);
+    }
+  }, [settings, events]);
+
+  async function toggleReminderEnabled() {
+    setError("");
+    setMessage("");
+    const current = settings?.reminder_enabled ?? false;
+    if (!current) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        setError("Notification permission is turned off in your system settings. Please enable notifications for Symptom Story in your device settings to receive reminders.");
+        return;
+      }
+      try {
+        const next = await updateCycleSettings({ reminder_enabled: true });
+        setSettings(next);
+        setMessage("Pre-period reminders enabled.");
+      } catch {
+        setError("Unable to update reminder settings.");
+      }
+    } else {
+      try {
+        const next = await updateCycleSettings({ reminder_enabled: false });
+        setSettings(next);
+        setMessage("Pre-period reminders disabled.");
+      } catch {
+        setError("Unable to update reminder settings.");
+      }
+    }
+  }
+
+  async function updateReminderDays(days: number) {
+    try {
+      const next = await updateCycleSettings({ reminder_days_before: days });
+      setSettings(next);
+    } catch {
+      setError("Unable to update support-window timing.");
+    }
+  }
 
   function resetEditor() {
     setEditing(null);
@@ -472,16 +518,23 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.heading}>Pre-period support</Text>
             <Text style={styles.body}>Choose when your in-app support window begins. Common choices are 5–7 days before an estimated period.</Text>
+            <Pressable accessibilityRole="switch" accessibilityLabel="Pre-period reminders" accessibilityState={{ checked: settings?.reminder_enabled ?? false }} onPress={toggleReminderEnabled} style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.label}>Pre-period reminders</Text>
+                <Text style={styles.muted}>Receive a discreet local notification on your device when your estimated pre-period support window opens.</Text>
+              </View>
+              <Text style={styles.settingValue}>{settings?.reminder_enabled ? "On" : "Off"}</Text>
+            </Pressable>
             <View style={styles.wrap}>
               {[5, 6, 7].map((days) => (
-                <Pressable key={days} accessibilityRole="radio" accessibilityState={{ checked: reminderDays === days }} onPress={() => updateCycleSettings({ reminder_days_before: days })} style={[styles.chip, reminderDays === days && styles.chipOn]}>
+                <Pressable key={days} accessibilityRole="radio" accessibilityState={{ checked: reminderDays === days }} onPress={() => updateReminderDays(days)} style={[styles.chip, reminderDays === days && styles.chipOn]}>
                   <Text style={styles.chipText}>{days} days</Text>
                 </Pressable>
               ))}
             </View>
             <Field label="Support window days before period (1–14)" value={String(reminderDays)} onChangeText={(value) => {
               const days = Number(value);
-              if (Number.isInteger(days) && days >= 1 && days <= 14) updateCycleSettings({ reminder_days_before: days }).then(setSettings).catch(() => setError("Unable to update support-window timing."));
+              if (Number.isInteger(days) && days >= 1 && days <= 14) updateReminderDays(days);
             }} />
             {supportWindowActive && <Notice text="Your support window is beginning. Review your own established support plan." />}
             <Text style={styles.label}>My Pre-Period Plan</Text>
