@@ -69,4 +69,62 @@ export async function deleteMedication(id: string) { const result = await supaba
 export async function logMedication(userId: string, medicationId: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
 export async function addJournal(userId: string, body: string) { const result = await supabase.from('journal_entries').insert({ user_id: userId, body }).select().single(); fail(result.error); return result.data as JournalRow; }
 export async function deleteJournal(id: string) { const result = await supabase.from('journal_entries').delete().eq('id', id); fail(result.error); }
-export async function deleteAccountData() { const result = await supabase.rpc('delete_my_account'); fail(result.error); await signOut(); }
+export async function loadExportPayload() {
+  const [
+    profileRes,
+    checkInsRes,
+    medicationsRes,
+    logsRes,
+    journalRes,
+    cycleSettings,
+    cycleEvents,
+    prePeriodPlan,
+    birthControlProfile,
+    intimacyEvents,
+  ] = await Promise.all([
+    supabase.from('profiles').select('display_name,tracking_mode,onboarding_complete').maybeSingle(),
+    supabase.from('check_ins').select('*').order('entry_date', { ascending: false }),
+    supabase.from('medications').select('*').order('created_at', { ascending: false }),
+    supabase.from('medication_logs').select('*').order('taken_at', { ascending: false }),
+    supabase.from('journal_entries').select('*').order('created_at', { ascending: false }),
+    loadCycleSettings(false),
+    loadCycleEvents(),
+    loadPrePeriodPlan(),
+    loadBirthControlProfile(),
+    loadIntimacyEvents(),
+  ]);
+
+  for (const response of [profileRes, checkInsRes, medicationsRes, logsRes, journalRes]) fail(response.error);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    notice: 'Self-reported Symptom Story records exported by the account owner. Not medical advice or a diagnostic interpretation.',
+    profile: profileRes.data as Profile | null,
+    checkIns: checkInsRes.data as CheckInRow[],
+    medications: medicationsRes.data as MedicationRow[],
+    medicationLogs: logsRes.data as MedicationLogRow[],
+    journalEntries: journalRes.data as JournalRow[],
+    cycleSettings,
+    cycleEvents,
+    prePeriodPlan,
+    birthControlProfile,
+    intimacyEvents,
+  };
+}
+
+export async function deleteAccountData() {
+  try {
+    const { cancelPrePeriodNotification } = await import('./notifications.ts');
+    await cancelPrePeriodNotification();
+  } catch {
+    // Continue cloud deletion even if notification cleanup fails
+  }
+  const result = await supabase.rpc('delete_my_account');
+  fail(result.error);
+  try {
+    await signOut({ scope: 'local' });
+  } catch {
+    // Best-effort local cleanup if unexpected error occurs
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+  }
+}

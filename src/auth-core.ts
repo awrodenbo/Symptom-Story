@@ -21,7 +21,7 @@ type AuthClient = {
     email: string;
     password: string;
   }) => AuthResponse;
-  signOut: () => AuthResponse;
+  signOut: (options?: { scope?: 'global' | 'local' | 'others' }) => AuthResponse;
   signUp: (credentials: { email: string; password: string }) => AuthResponse;
   updateUser: (attributes: { password: string }) => AuthResponse;
 };
@@ -216,7 +216,8 @@ export function createAuthService({
       }),
     signIn: (email: string, password: string) =>
       auth.signInWithPassword({ email: email.trim(), password }),
-    signOut: () => auth.signOut(),
+    signOut: (options?: { scope?: 'global' | 'local' | 'others' }) =>
+      auth.signOut(options),
     signUp: (email: string, password: string) =>
       auth.signUp({ email: email.trim(), password }),
     updatePassword: (password: string) => auth.updateUser({ password }),

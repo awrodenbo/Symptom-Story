@@ -29,6 +29,7 @@ import {
   loadBirthControlProfile,
   loadCycleEvents,
   loadCycleSettings,
+  loadExportPayload,
   loadIntimacyEvents,
   loadDashboard,
   logMedication,
@@ -893,7 +894,10 @@ export default function App() {
       data: { subscription },
     } = subscribeToAuthChanges(async (_event, next) => {
       setSession(next);
-      if (!next) setData(null);
+      if (!next) {
+        setData(null);
+        setTab("Home");
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -1332,36 +1336,27 @@ function ProfileScreen({
   const [schedule, setSchedule] = useState("");
   async function exportData() {
     Alert.alert(
-      "Export health records?",
-      "Your export may include private health information, including cycle, birth-control, and intimacy records. Only save or share it somewhere you trust.",
+      "Export complete health record?",
+      "Your export includes your full Symptom Story record, including cycle events, medication logs, journal reflections, birth-control profile, and intimacy records. Only save or share it somewhere you trust.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Continue with export",
           onPress: async () => {
-            const [cycleSettings, birthControlProfile, intimacyEvents] = await Promise.all([
-              loadCycleSettings(false),
-              loadBirthControlProfile(),
-              loadIntimacyEvents(),
-            ]);
-            await Share.share({
-              title: "Symptom Story export",
-              message: JSON.stringify(
-                {
-                  exportedAt: new Date().toISOString(),
-                  notice: "Self-reported records; not medical advice.",
-                  profile,
-                  checkIns,
-                  medications,
-                  journal,
-                  cycleSettings,
-                  birthControlProfile,
-                  intimacyEvents,
-                },
-                null,
-                2,
-              ),
-            });
+            try {
+              const exportPayload = await loadExportPayload();
+              await Share.share({
+                title: "Symptom Story export",
+                message: JSON.stringify(exportPayload, null, 2),
+              });
+            } catch (exportError) {
+              Alert.alert(
+                "Export failed",
+                exportError instanceof Error
+                  ? exportError.message
+                  : "Unable to generate your export.",
+              );
+            }
           },
         },
       ],
@@ -1438,11 +1433,11 @@ function ProfileScreen({
       )}
       <Card>
         <Text accessibilityRole="header" style={s.heading}>
-          Your data
+          Data & Privacy
         </Text>
         <Button
           secondary
-          label="Export my records"
+          label="Export my data"
           icon="share-outline"
           onPress={exportData}
         />
@@ -1453,15 +1448,15 @@ function ProfileScreen({
         />
         <Button
           secondary
-          label="Delete account and data"
+          label="Delete my account and data"
           onPress={() =>
             Alert.alert(
-              "Delete account?",
-              "All of your records will be permanently deleted.",
+              "Permanently delete account?",
+              "This permanently deletes your Symptom Story account and the health and wellness records stored with it. This action cannot be undone.",
               [
-                { text: "Cancel" },
+                { text: "Cancel", style: "cancel" },
                 {
-                  text: "Delete",
+                  text: "Delete my account and data",
                   style: "destructive",
                   onPress: () => run(deleteAccountData, "Account deleted."),
                 },
