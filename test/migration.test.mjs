@@ -8,6 +8,7 @@ const cycleSql = readFileSync(new URL('../supabase/migrations/202608270002_cycle
 const cycleDateSql = readFileSync(new URL('../supabase/migrations/202608270003_cycle_event_local_date.sql', import.meta.url), 'utf8');
 const feelingsSql = readFileSync(new URL('../supabase/migrations/202608270004_check_in_feelings.sql', import.meta.url), 'utf8');
 const planSql = readFileSync(new URL('../supabase/migrations/202608270005_pre_period_plans.sql', import.meta.url), 'utf8');
+const sensitiveSql = readFileSync(new URL('../supabase/migrations/202608280001_sensitive_tracking_foundation.sql', import.meta.url), 'utf8');
 const tables = ['profiles', 'check_ins', 'medications', 'medication_logs', 'journal_entries'];
 
 test('every user-data table enables row-level security', () => {
@@ -79,4 +80,27 @@ test('pre-period plans are single, user-owned, and cascade on account deletion',
   for (const operation of ['select', 'insert', 'update', 'delete']) {
     assert.match(planSql, new RegExp(`create policy[^;]+on public\\.pre_period_plans[^;]+for ${operation}`, 'is'));
   }
+});
+
+test('sensitive tracking stays optional, separate, and user-owned', () => {
+  assert.match(sensitiveSql, /add column ttc_features_enabled boolean not null default false/i);
+  assert.match(sensitiveSql, /create table public\.birth_control_profile[\s\S]+user_id uuid primary key references auth\.users\(id\) on delete cascade/i);
+  assert.match(sensitiveSql, /method text not null check \(method in \([\s\S]+prefer_not_to_specify/i);
+  assert.match(sensitiveSql, /note text check \(char_length\(note\) <= 500\)/i);
+  assert.match(sensitiveSql, /create table public\.intimacy_events[\s\S]+event_date date not null[\s\S]+occurred_at timestamptz not null/i);
+  assert.match(sensitiveSql, /sperm_present text check \(sperm_present in \('yes', 'no', 'unknown', 'prefer_not_to_say'\)\)/i);
+  assert.match(sensitiveSql, /note text check \(char_length\(note\) <= 1000\)/i);
+  for (const table of ['birth_control_profile', 'intimacy_events']) {
+    assert.match(sensitiveSql, new RegExp(`alter table public\\.${table} enable row level security`, 'i'));
+    for (const operation of ['select', 'insert', 'update', 'delete']) {
+      assert.match(sensitiveSql, new RegExp(`create policy[^;]+on public\\.${table}[^;]+for ${operation}`, 'is'));
+    }
+  }
+  assert.match(sensitiveSql, /intimacy_events_require_opt_in/);
+  assert.match(sensitiveSql, /intimacy_tracking_enabled/);
+  assert.match(sensitiveSql, /raise exception 'Intimacy tracking is not enabled\.'/i);
+  assert.match(sensitiveSql, /birth_control_profile_require_opt_in/);
+  assert.match(sensitiveSql, /birth_control_tracking_enabled/);
+  assert.match(sensitiveSql, /raise exception 'Birth control tracking is not enabled\.'/i);
+  assert.match(sensitiveSql, /intimacy_events_user_event_date_occurred_at_idx[\s\S]+\(user_id, event_date, occurred_at\)/i);
 });

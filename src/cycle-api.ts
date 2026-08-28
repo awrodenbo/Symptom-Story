@@ -5,6 +5,7 @@ export type CycleSettingsRow = {
   tracking_enabled: boolean;
   birth_control_tracking_enabled: boolean;
   intimacy_tracking_enabled: boolean;
+  ttc_features_enabled: boolean;
   reminder_enabled: boolean;
   reminder_days_before: number;
   created_at: string;
@@ -28,9 +29,43 @@ export type CycleEventInput = {
 
 export type CycleSettingsUpdate = Partial<Pick<
   CycleSettingsRow,
-  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'reminder_enabled' | 'reminder_days_before'
+  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'ttc_features_enabled' | 'reminder_enabled' | 'reminder_days_before'
 >>;
 
+export type BirthControlMethod = 'pill' | 'iud' | 'implant' | 'injection' | 'ring' | 'patch' | 'barrier' | 'fertility_awareness' | 'other' | 'prefer_not_to_specify';
+
+export type BirthControlProfileRow = {
+  user_id: string;
+  method: BirthControlMethod;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BirthControlProfileInput = {
+  method: BirthControlMethod;
+  note?: string | null;
+};
+
+export type SpermPresence = 'yes' | 'no' | 'unknown' | 'prefer_not_to_say';
+
+export type IntimacyEventRow = {
+  id: string;
+  user_id: string;
+  event_date: string;
+  occurred_at: string;
+  sperm_present: SpermPresence | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type IntimacyEventInput = {
+  event_date: string;
+  occurred_at: string;
+  sperm_present?: SpermPresence | null;
+  note?: string | null;
+};
 export type PrePeriodPlanRow = {
   user_id: string;
   body: string;
@@ -60,7 +95,7 @@ export type CycleDataClient = {
   auth: {
     getUser(): Promise<{ data: { user: { id: string } | null }; error: ApiError }>;
   };
-  from(table: 'cycle_settings' | 'cycle_events' | 'pre_period_plans'): {
+  from(table: 'cycle_settings' | 'cycle_events' | 'pre_period_plans' | 'birth_control_profile' | 'intimacy_events'): {
     select(fields: string): CycleQuery;
     insert(payload: Record<string, unknown>): CycleQuery;
     upsert(payload: Record<string, unknown>, options?: { onConflict: string }): CycleQuery;
@@ -70,6 +105,8 @@ export type CycleDataClient = {
 };
 
 const cycleEventTypes: CycleEventType[] = ['period_start', 'period_end', 'spotting', 'flow'];
+const birthControlMethods: BirthControlMethod[] = ['pill', 'iud', 'implant', 'injection', 'ring', 'patch', 'barrier', 'fertility_awareness', 'other', 'prefer_not_to_specify'];
+const spermPresenceValues: SpermPresence[] = ['yes', 'no', 'unknown', 'prefer_not_to_say'];
 const cycleFlowLevels: CycleFlowLevel[] = ['light', 'medium', 'heavy', 'very_heavy'];
 const timestampWithOffset = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -85,11 +122,11 @@ async function authenticatedUserId(client: CycleDataClient): Promise<string> {
 }
 
 function validateCycleSettingsUpdate(values: CycleSettingsUpdate) {
-  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'reminder_enabled', 'reminder_days_before'];
+  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled', 'reminder_days_before'];
   for (const key of Object.keys(values)) {
     if (!supported.includes(key)) throw new Error(`Unsupported cycle setting: ${key}`);
   }
-  for (const key of ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'reminder_enabled'] as const) {
+  for (const key of ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled'] as const) {
     if (key in values && typeof values[key] !== 'boolean') throw new Error(`${key} must be a boolean.`);
   }
   const reminderDays = values.reminder_days_before;
@@ -97,6 +134,24 @@ function validateCycleSettingsUpdate(values: CycleSettingsUpdate) {
     throw new Error('reminder_days_before must be an integer between 1 and 14.');
 }
 
+function validateBirthControlProfile(values: BirthControlProfileInput): string | null {
+  if (!birthControlMethods.includes(values.method)) throw new Error('Unsupported birth control method.');
+  const note = values.note?.trim() || null;
+  if (note && note.length > 500) throw new Error('Birth control note must be 500 characters or fewer.');
+  return note;
+}
+
+function validateIntimacyEvent(values: IntimacyEventInput): SpermPresence | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(values.event_date) || Number.isNaN(Date.parse(`${values.event_date}T00:00:00Z`)))
+    throw new Error('event_date must be a valid local calendar date.');
+  if (!timestampWithOffset.test(values.occurred_at) || Number.isNaN(Date.parse(values.occurred_at)))
+    throw new Error('occurred_at must be a valid timestamp with an explicit timezone offset.');
+  if (values.sperm_present !== undefined && values.sperm_present !== null && !spermPresenceValues.includes(values.sperm_present))
+    throw new Error('Unsupported sperm presence value.');
+  const note = values.note?.trim() || null;
+  if (note && note.length > 1000) throw new Error('Intimacy note must be 1000 characters or fewer.');
+  return values.sperm_present ?? null;
+}
 function validateCycleEvent(values: CycleEventInput): CycleFlowLevel | null {
   if (!cycleEventTypes.includes(values.event_type)) throw new Error('Unsupported cycle event type.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(values.event_date) || Number.isNaN(Date.parse(`${values.event_date}T00:00:00Z`)))
@@ -132,6 +187,29 @@ export function createCycleApi(client: CycleDataClient) {
     const result = await client.from('cycle_settings').upsert({ user_id: userId, ...values }).select('*').single();
     fail(result.error);
     return result.data as CycleSettingsRow;
+  }
+
+  async function loadBirthControlProfile(): Promise<BirthControlProfileRow | null> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('birth_control_profile').select('*').eq('user_id', userId).maybeSingle();
+    fail(result.error);
+    return result.data as BirthControlProfileRow | null;
+  }
+
+  async function saveBirthControlProfile(values: BirthControlProfileInput): Promise<BirthControlProfileRow> {
+    const note = validateBirthControlProfile(values);
+    const settings = await loadCycleSettings(false);
+    if (!settings?.birth_control_tracking_enabled) throw new Error('Birth control tracking is not enabled.');
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('birth_control_profile').upsert({ user_id: userId, method: values.method, note }, { onConflict: 'user_id' }).select('*').single();
+    fail(result.error);
+    return result.data as BirthControlProfileRow;
+  }
+
+  async function deleteBirthControlProfile(): Promise<void> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('birth_control_profile').delete().eq('user_id', userId);
+    fail(result.error);
   }
 
   async function loadPrePeriodPlan(): Promise<PrePeriodPlanRow | null> {
@@ -197,5 +275,42 @@ export function createCycleApi(client: CycleDataClient) {
     fail(result.error);
   }
 
-  return { loadCycleSettings, updateCycleSettings, loadCycleEvents, createCycleEvent, updateCycleEvent, deleteCycleEvent, loadPrePeriodPlan, savePrePeriodPlan, deletePrePeriodPlan };
+  async function loadIntimacyEvents(): Promise<IntimacyEventRow[]> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('intimacy_events').select('*').eq('user_id', userId)
+      .order('event_date', { ascending: true }).order('occurred_at', { ascending: true }).order('created_at', { ascending: true });
+    fail(result.error);
+    return result.data as IntimacyEventRow[];
+  }
+
+  async function ensureIntimacyTrackingEnabled() {
+    const settings = await loadCycleSettings(false);
+    if (!settings?.intimacy_tracking_enabled) throw new Error('Intimacy tracking is not enabled.');
+  }
+
+  async function createIntimacyEvent(values: IntimacyEventInput): Promise<IntimacyEventRow> {
+    const spermPresent = validateIntimacyEvent(values);
+    await ensureIntimacyTrackingEnabled();
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('intimacy_events').insert({ user_id: userId, event_date: values.event_date, occurred_at: values.occurred_at, sperm_present: spermPresent, note: values.note?.trim() || null }).select('*').single();
+    fail(result.error);
+    return result.data as IntimacyEventRow;
+  }
+
+  async function updateIntimacyEvent(id: string, values: IntimacyEventInput): Promise<IntimacyEventRow> {
+    const spermPresent = validateIntimacyEvent(values);
+    await ensureIntimacyTrackingEnabled();
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('intimacy_events').update({ event_date: values.event_date, occurred_at: values.occurred_at, sperm_present: spermPresent, note: values.note?.trim() || null }).eq('id', id).eq('user_id', userId).select('*').single();
+    fail(result.error);
+    return result.data as IntimacyEventRow;
+  }
+
+  async function deleteIntimacyEvent(id: string): Promise<void> {
+    const userId = await authenticatedUserId(client);
+    const result = await client.from('intimacy_events').delete().eq('id', id).eq('user_id', userId);
+    fail(result.error);
+  }
+
+  return { loadCycleSettings, updateCycleSettings, loadBirthControlProfile, saveBirthControlProfile, deleteBirthControlProfile, loadCycleEvents, createCycleEvent, updateCycleEvent, deleteCycleEvent, loadIntimacyEvents, createIntimacyEvent, updateIntimacyEvent, deleteIntimacyEvent, loadPrePeriodPlan, savePrePeriodPlan, deletePrePeriodPlan };
 }

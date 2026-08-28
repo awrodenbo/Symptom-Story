@@ -19,12 +19,24 @@ import {
   loadPrePeriodPlan,
   savePrePeriodPlan,
   deletePrePeriodPlan,
+  deleteBirthControlProfile,
+  deleteIntimacyEvent,
+  loadBirthControlProfile,
+  loadIntimacyEvents,
+  saveBirthControlProfile,
+  createIntimacyEvent,
+  updateIntimacyEvent,
   updateCycleSettings,
   updateCycleEvent,
+  type BirthControlMethod,
+  type BirthControlProfileRow,
   type CycleEventInput,
   type CycleEventRow,
   type CycleSettingsRow,
   type CheckInRow,
+  type IntimacyEventInput,
+  type IntimacyEventRow,
+  type SpermPresence,
   type PrePeriodPlanRow,
 } from "./api";
 import {
@@ -57,6 +69,26 @@ const eventLabels: Record<CycleEventType, string> = {
 };
 
 const flowLevels: CycleFlowLevel[] = ["light", "medium", "heavy", "very_heavy"];
+const birthControlMethods: BirthControlMethod[] = ["pill", "iud", "implant", "injection", "ring", "patch", "barrier", "fertility_awareness", "other", "prefer_not_to_specify"];
+const birthControlLabels: Record<BirthControlMethod, string> = {
+  pill: "Pill",
+  iud: "IUD",
+  implant: "Implant",
+  injection: "Injection",
+  ring: "Ring",
+  patch: "Patch",
+  barrier: "Barrier",
+  fertility_awareness: "Fertility awareness",
+  other: "Other",
+  prefer_not_to_specify: "Prefer not to specify",
+};
+const spermPresenceValues: SpermPresence[] = ["yes", "no", "unknown", "prefer_not_to_say"];
+const spermPresenceLabels: Record<SpermPresence, string> = {
+  yes: "Yes",
+  no: "No",
+  unknown: "Unknown",
+  prefer_not_to_say: "Prefer not to say",
+};
 
 function localDate(): string {
   const now = new Date();
@@ -129,6 +161,8 @@ function eventInput(type: CycleEventType, eventDate: string, occurredAt: string,
 
 export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onCheckIn: () => void; reducedMotion: boolean; checkIn?: CheckInRow }) {
   const [settings, setSettings] = useState<CycleSettingsRow | null>(null);
+  const [birthControl, setBirthControl] = useState<BirthControlProfileRow | null>(null);
+  const [intimacyEvents, setIntimacyEvents] = useState<IntimacyEventRow[]>([]);
   const [plan, setPlan] = useState<PrePeriodPlanRow | null>(null);
   const [events, setEvents] = useState<CycleEventRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,15 +176,29 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [flowLevel, setFlowLevel] = useState<CycleFlowLevel | null>(null);
   const [planDraft, setPlanDraft] = useState("");
   const [planBusy, setPlanBusy] = useState(false);
+  const [birthControlMethod, setBirthControlMethod] = useState<BirthControlMethod>("prefer_not_to_specify");
+  const [birthControlNote, setBirthControlNote] = useState("");
+  const [intimacyEditing, setIntimacyEditing] = useState<IntimacyEventRow | null>(null);
+  const [intimacyFormOpen, setIntimacyFormOpen] = useState(false);
+  const [intimacyDate, setIntimacyDate] = useState(localDate);
+  const [intimacyTimestamp, setIntimacyTimestamp] = useState(localTimestamp);
+  const [spermPresent, setSpermPresent] = useState<SpermPresence | null>(null);
+  const [intimacyNote, setIntimacyNote] = useState("");
 
   async function load() {
     setLoading(true);
     setError("");
     try {
-      const [nextSettings, nextEvents, nextPlan] = await Promise.all([loadCycleSettings(false), loadCycleEvents(), loadPrePeriodPlan()]);
+      const [nextSettings, nextEvents, nextPlan, nextBirthControl, nextIntimacy] = await Promise.all([loadCycleSettings(false), loadCycleEvents(), loadPrePeriodPlan(), loadBirthControlProfile(), loadIntimacyEvents()]);
       setSettings(nextSettings);
       setEvents(nextEvents);
       setPlan(nextPlan);
+      setBirthControl(nextBirthControl);
+      setIntimacyEvents(nextIntimacy);
+      if (nextBirthControl) {
+        setBirthControlMethod(nextBirthControl.method);
+        setBirthControlNote(nextBirthControl.note ?? "");
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load cycle records.");
     } finally {
@@ -167,6 +215,33 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     setEventDate(localDate());
     setOccurredAt(localTimestamp());
     setFlowLevel(null);
+  }
+
+  function resetIntimacyEditor() {
+    setIntimacyEditing(null);
+    setIntimacyFormOpen(false);
+    setIntimacyDate(localDate());
+    setIntimacyTimestamp(localTimestamp());
+    setSpermPresent(null);
+    setIntimacyNote("");
+  }
+
+  function beginIntimacyEdit(event: IntimacyEventRow) {
+    setIntimacyEditing(event);
+    setIntimacyFormOpen(true);
+    setIntimacyDate(event.event_date);
+    setIntimacyTimestamp(event.occurred_at);
+    setSpermPresent(event.sperm_present);
+    setIntimacyNote(event.note ?? "");
+  }
+
+  function beginNewIntimacy() {
+    setIntimacyEditing(null);
+    setIntimacyFormOpen(true);
+    setIntimacyDate(localDate());
+    setIntimacyTimestamp(localTimestamp());
+    setSpermPresent(null);
+    setIntimacyNote("");
   }
 
   function beginNew(type: CycleEventType, level: CycleFlowLevel | null = null) {
@@ -235,6 +310,56 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     } finally {
       setBusy(false);
     }
+  }
+
+  async function saveBirthControl() {
+    setBusy(true);
+    setError("");
+    try {
+      const saved = await saveBirthControlProfile({ method: birthControlMethod, note: birthControlNote });
+      setBirthControl(saved);
+      setMessage("Birth control information saved.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save birth control information.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveIntimacy() {
+    setBusy(true);
+    setError("");
+    try {
+      const input: IntimacyEventInput = { event_date: intimacyDate.trim(), occurred_at: intimacyTimestamp.trim(), sperm_present: spermPresent, note: intimacyNote };
+      if (intimacyEditing) await updateIntimacyEvent(intimacyEditing.id, input);
+      else await createIntimacyEvent(input);
+      await load();
+      setMessage(intimacyEditing ? "Intimacy entry updated." : "Intimacy entry saved.");
+      resetIntimacyEditor();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save intimacy entry.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function removeIntimacy(event: IntimacyEventRow) {
+    Alert.alert("Delete intimacy entry?", "This cannot be undone.", [
+      { text: "Cancel" },
+      { text: "Delete", style: "destructive", onPress: async () => {
+        setBusy(true);
+        try {
+          await deleteIntimacyEvent(event.id);
+          await load();
+          setMessage("Intimacy entry deleted.");
+          if (intimacyEditing?.id === event.id) resetIntimacyEditor();
+        } catch (deleteError) {
+          setError(deleteError instanceof Error ? deleteError.message : "Unable to delete intimacy entry.");
+        } finally {
+          setBusy(false);
+        }
+      } },
+    ]);
   }
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color={C.moss} /><Text style={styles.muted}>Loading your cycle records...</Text></View>;
@@ -369,6 +494,88 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           </View>
 
           <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Private tracking preferences</Text>
+            <Text style={styles.body}>These optional records stay separate from your cycle history and are never used to estimate phases or dates.</Text>
+            <Pressable accessibilityRole="switch" accessibilityLabel="Birth control tracking" accessibilityState={{ checked: settings?.birth_control_tracking_enabled ?? false }} onPress={() => updateCycleSettings({ birth_control_tracking_enabled: !(settings?.birth_control_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update birth control tracking."))} style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.label}>Birth control tracking</Text>
+                <Text style={styles.muted}>Optional. Keep a current method and private note.</Text>
+              </View>
+              <Text style={styles.settingValue}>{settings?.birth_control_tracking_enabled ? "On" : "Off"}</Text>
+            </Pressable>
+            {settings?.birth_control_tracking_enabled && (
+              <>
+                <Text style={styles.label}>Method</Text>
+                <View style={styles.wrap}>
+                  {birthControlMethods.map((method) => (
+                    <Pressable key={method} accessibilityRole="radio" accessibilityState={{ checked: birthControlMethod === method }} onPress={() => setBirthControlMethod(method)} style={[styles.chip, birthControlMethod === method && styles.chipOn]}>
+                      <Text style={styles.chipText}>{birthControlLabels[method]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Field label="Private note (optional)" value={birthControlNote} onChangeText={setBirthControlNote} placeholder="Anything you want to remember" />
+                <View style={styles.row}>
+                  <Button disabled={busy} label={busy ? "Saving..." : "Save method"} onPress={saveBirthControl} />
+                  {birthControl && <Button secondary disabled={busy} label="Delete method" onPress={() => Alert.alert("Delete birth control information?", "This cannot be undone.", [{ text: "Cancel" }, { text: "Delete", style: "destructive", onPress: async () => { await deleteBirthControlProfile(); setBirthControl(null); setBirthControlNote(""); setMessage("Birth control information deleted."); } }])} />}
+                </View>
+              </>
+            )}
+            <Pressable accessibilityRole="switch" accessibilityLabel="Intimacy tracking" accessibilityState={{ checked: settings?.intimacy_tracking_enabled ?? false }} onPress={() => updateCycleSettings({ intimacy_tracking_enabled: !(settings?.intimacy_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update intimacy tracking."))} style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.label}>Intimacy tracking</Text>
+                <Text style={styles.muted}>Optional. Record only a date, time, and the details you choose.</Text>
+              </View>
+              <Text style={styles.settingValue}>{settings?.intimacy_tracking_enabled ? "On" : "Off"}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="switch" accessibilityLabel="Trying to conceive features" accessibilityState={{ checked: settings?.ttc_features_enabled ?? false }} onPress={() => updateCycleSettings({ ttc_features_enabled: !(settings?.ttc_features_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update TTC preference."))} style={styles.settingRow}>
+              <View style={styles.settingCopy}>
+                <Text style={styles.label}>Trying to conceive</Text>
+                <Text style={styles.muted}>Turn this on if you'd like Symptom Story to support TTC-related tracking and features. This setting does not estimate fertility or determine when you can become pregnant.</Text>
+              </View>
+              <Text style={styles.settingValue}>{settings?.ttc_features_enabled ? "On" : "Off"}</Text>
+            </Pressable>
+            {settings?.intimacy_tracking_enabled && (
+              <View style={styles.sensitiveSection}>
+                <Text accessibilityRole="header" style={styles.subheading}>Intimacy entries</Text>
+                <Text style={styles.muted}>Sperm presence is optional and only appears while intimacy tracking is on.</Text>
+                {!intimacyEditing && <Button label="Add intimacy entry" onPress={beginNewIntimacy} />}
+                {intimacyFormOpen && <Text style={styles.editorTitle}>{intimacyEditing ? "Edit intimacy entry" : "New intimacy entry"}</Text>}
+                {intimacyFormOpen && (
+                  <>
+                    <Field label="Local calendar date (YYYY-MM-DD)" value={intimacyDate} onChangeText={setIntimacyDate} />
+                    <Field label="Local date and time" value={intimacyTimestamp} onChangeText={setIntimacyTimestamp} placeholder="YYYY-MM-DDTHH:MM:SS-04:00" />
+                    <Text style={styles.label}>Sperm present (optional)</Text>
+                    <View style={styles.wrap}>
+                      {spermPresenceValues.map((value) => (
+                        <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: spermPresent === value }} onPress={() => setSpermPresent(value)} style={[styles.chip, spermPresent === value && styles.chipOn]}>
+                          <Text style={styles.chipText}>{spermPresenceLabels[value]}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Field label="Private note (optional)" value={intimacyNote} onChangeText={setIntimacyNote} placeholder="Optional" />
+                    <View style={styles.row}>
+                      <Button disabled={busy} label={busy ? "Saving..." : intimacyEditing?.id ? "Save changes" : "Save entry"} onPress={saveIntimacy} />
+                      <Button secondary label="Cancel" onPress={resetIntimacyEditor} />
+                    </View>
+                  </>
+                )}
+                {intimacyEvents.map((event) => (
+                  <View key={event.id} style={styles.eventRow}>
+                    <View style={styles.eventCopy}>
+                      <Text style={styles.eventName}>{event.event_date} · {timeFromTimestamp(event.occurred_at)}</Text>
+                      <Text style={styles.muted}>{event.sperm_present ? `Sperm present: ${spermPresenceLabels[event.sperm_present]}` : "Sperm presence not recorded"}{event.note ? " · Private note added" : ""}</Text>
+                    </View>
+                    <View style={styles.eventActions}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Edit intimacy entry on ${event.event_date}`} onPress={() => beginIntimacyEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete intimacy entry on ${event.event_date}`} onPress={() => removeIntimacy(event)} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.heading}>Quick log</Text>
             <Text style={styles.muted}>You can add more than one flow observation on the same date.</Text>
             <View style={styles.buttonGrid}>
@@ -454,6 +661,11 @@ const styles = StyleSheet.create({
   buttonText: { fontSize: 14, fontWeight: "800", color: C.white, textAlign: "center" },
   buttonSecondaryText: { color: C.moss },
   row: { flexDirection: "row", gap: 9 },
+  settingRow: { minHeight: 58, borderTopWidth: 1, borderTopColor: C.line, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10 },
+  settingCopy: { flex: 1, gap: 2 },
+  settingValue: { minWidth: 34, fontSize: 13, fontWeight: "800", color: C.moss, textAlign: "right" },
+  sensitiveSection: { gap: 10 },
+  subheading: { fontSize: 16, lineHeight: 22, fontWeight: "700", color: C.ink },
   field: { gap: 6 },
   label: { fontSize: 13, fontWeight: "700", color: C.ink },
   input: { minHeight: 48, borderWidth: 1, borderColor: "#CDD6D0", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: C.ink, backgroundColor: C.white },

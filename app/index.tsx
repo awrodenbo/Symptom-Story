@@ -25,6 +25,9 @@ import {
   deleteCheckIn,
   deleteJournal,
   deleteMedication,
+  loadBirthControlProfile,
+  loadCycleSettings,
+  loadIntimacyEvents,
   loadDashboard,
   logMedication,
   saveCheckIn,
@@ -1290,21 +1293,41 @@ function ProfileScreen({
   const [name, setName] = useState("");
   const [schedule, setSchedule] = useState("");
   async function exportData() {
-    await Share.share({
-      title: "Symptom Story export",
-      message: JSON.stringify(
+    Alert.alert(
+      "Export health records?",
+      "Your export may include private health information, including cycle, birth-control, and intimacy records. Only save or share it somewhere you trust.",
+      [
+        { text: "Cancel", style: "cancel" },
         {
-          exportedAt: new Date().toISOString(),
-          notice: "Self-reported records; not medical advice.",
-          profile,
-          checkIns,
-          medications,
-          journal,
+          text: "Continue with export",
+          onPress: async () => {
+            const [cycleSettings, birthControlProfile, intimacyEvents] = await Promise.all([
+              loadCycleSettings(false),
+              loadBirthControlProfile(),
+              loadIntimacyEvents(),
+            ]);
+            await Share.share({
+              title: "Symptom Story export",
+              message: JSON.stringify(
+                {
+                  exportedAt: new Date().toISOString(),
+                  notice: "Self-reported records; not medical advice.",
+                  profile,
+                  checkIns,
+                  medications,
+                  journal,
+                  cycleSettings,
+                  birthControlProfile,
+                  intimacyEvents,
+                },
+                null,
+                2,
+              ),
+            });
+          },
         },
-        null,
-        2,
-      ),
-    });
+      ],
+    );
   }
   return (
     <ScrollView
