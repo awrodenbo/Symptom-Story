@@ -53,16 +53,18 @@ import {
   reconcilePrePeriodNotification,
   requestNotificationPermission,
 } from "./notifications";
+import { theme } from "./theme/tokens";
+import { Button, Card, Field, Notice, ToggleRow, Chip } from "./components";
 
 const C = {
-  ink: "#25342E",
-  muted: "#68766F",
-  moss: "#487263",
-  sage: "#DCEBE3",
-  cream: "#F8F6F0",
-  white: "#FFF",
-  line: "#DFE5E0",
-  danger: "#9A4F54",
+  ink: theme.colors.textPrimary,
+  muted: theme.colors.textMuted,
+  moss: theme.colors.brandPrimary,
+  sage: theme.colors.accentSage,
+  cream: theme.colors.background,
+  white: theme.colors.surface,
+  line: theme.colors.surfaceBorder,
+  danger: theme.colors.danger,
 };
 
 const eventLabels: Record<CycleEventType, string> = {
@@ -122,41 +124,6 @@ function calendarDifference(start: string, end: string): number {
 
 function friendlyFlow(level: CycleFlowLevel | null): string {
   return level?.replace("_", " ") ?? "";
-}
-
-function Button({ label, onPress, secondary = false, disabled = false }: { label: string; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary, pressed && styles.buttonPressed, disabled && styles.buttonDisabled]}
-    >
-      <Text style={[styles.buttonText, secondary && styles.buttonSecondaryText]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function Field({ label, value, onChangeText, placeholder }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string }) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        autoCapitalize="none"
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#89958E"
-        style={styles.input}
-        value={value}
-      />
-    </View>
-  );
-}
-
-function Notice({ text, error = false }: { text: string; error?: boolean }) {
-  return <View accessibilityLiveRegion="polite" style={[styles.notice, error && styles.errorNotice]}><Text style={[styles.noticeText, error && styles.errorText]}>{text}</Text></View>;
 }
 
 function eventInput(type: CycleEventType, eventDate: string, occurredAt: string, flowLevel: CycleFlowLevel | null): CycleEventInput {
@@ -518,13 +485,12 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.heading}>Pre-period support</Text>
             <Text style={styles.body}>Choose when your in-app support window begins. Common choices are 5–7 days before an estimated period.</Text>
-            <Pressable accessibilityRole="switch" accessibilityLabel="Pre-period reminders" accessibilityState={{ checked: settings?.reminder_enabled ?? false }} onPress={toggleReminderEnabled} style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.label}>Pre-period reminders</Text>
-                <Text style={styles.muted}>Receive a discreet local notification on your device when your estimated pre-period support window opens.</Text>
-              </View>
-              <Text style={styles.settingValue}>{settings?.reminder_enabled ? "On" : "Off"}</Text>
-            </Pressable>
+            <ToggleRow
+              label="Pre-period reminders"
+              description="Receive a discreet local notification on your device when your estimated pre-period support window opens."
+              checked={settings?.reminder_enabled ?? false}
+              onPress={toggleReminderEnabled}
+            />
             <View style={styles.wrap}>
               {[5, 6, 7].map((days) => (
                 <Pressable key={days} accessibilityRole="radio" accessibilityState={{ checked: reminderDays === days }} onPress={() => updateReminderDays(days)} style={[styles.chip, reminderDays === days && styles.chipOn]}>
@@ -538,7 +504,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
             }} />
             {supportWindowActive && <Notice text="Your support window is beginning. Review your own established support plan." />}
             <Text style={styles.label}>My Pre-Period Plan</Text>
-            <TextInput accessibilityLabel="My Pre-Period Plan" multiline maxLength={5000} onChangeText={setPlanDraft} placeholder="Write your own established support plan..." placeholderTextColor="#89958E" style={[styles.input, styles.planInput]} value={planDraft} />
+            <TextInput accessibilityLabel="My Pre-Period Plan" multiline maxLength={5000} onChangeText={setPlanDraft} placeholder="Write your own established support plan..." placeholderTextColor={C.muted} style={[styles.input, styles.planInput]} value={planDraft} />
             <Text style={styles.muted}>This is your plan, not medical advice. Symptom Story will not tell you to start, stop, increase, or decrease medication.</Text>
             <View style={styles.row}>
               <Button disabled={planBusy || !planDraft.trim()} label={planBusy ? "Saving..." : "Save plan"} onPress={savePlan} />
@@ -549,13 +515,12 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.heading}>Private tracking preferences</Text>
             <Text style={styles.body}>These optional records stay separate from your cycle history and are never used to estimate phases or dates.</Text>
-            <Pressable accessibilityRole="switch" accessibilityLabel="Birth control tracking" accessibilityState={{ checked: settings?.birth_control_tracking_enabled ?? false }} onPress={() => updateCycleSettings({ birth_control_tracking_enabled: !(settings?.birth_control_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update birth control tracking."))} style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.label}>Birth control tracking</Text>
-                <Text style={styles.muted}>Optional. Keep a current method and private note.</Text>
-              </View>
-              <Text style={styles.settingValue}>{settings?.birth_control_tracking_enabled ? "On" : "Off"}</Text>
-            </Pressable>
+            <ToggleRow
+              label="Birth control tracking"
+              description="Optional. Keep a current method and private note."
+              checked={settings?.birth_control_tracking_enabled ?? false}
+              onPress={() => updateCycleSettings({ birth_control_tracking_enabled: !(settings?.birth_control_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update birth control tracking."))}
+            />
             {settings?.birth_control_tracking_enabled && (
               <>
                 <Text style={styles.label}>Method</Text>
@@ -573,20 +538,18 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                 </View>
               </>
             )}
-            <Pressable accessibilityRole="switch" accessibilityLabel="Intimacy tracking" accessibilityState={{ checked: settings?.intimacy_tracking_enabled ?? false }} onPress={() => updateCycleSettings({ intimacy_tracking_enabled: !(settings?.intimacy_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update intimacy tracking."))} style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.label}>Intimacy tracking</Text>
-                <Text style={styles.muted}>Optional. Record only a date, time, and the details you choose.</Text>
-              </View>
-              <Text style={styles.settingValue}>{settings?.intimacy_tracking_enabled ? "On" : "Off"}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="switch" accessibilityLabel="Trying to conceive features" accessibilityState={{ checked: settings?.ttc_features_enabled ?? false }} onPress={() => updateCycleSettings({ ttc_features_enabled: !(settings?.ttc_features_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update TTC preference."))} style={styles.settingRow}>
-              <View style={styles.settingCopy}>
-                <Text style={styles.label}>Trying to conceive</Text>
-                <Text style={styles.muted}>Turn this on if you'd like Symptom Story to support TTC-related tracking and features. This setting does not estimate fertility or determine when you can become pregnant.</Text>
-              </View>
-              <Text style={styles.settingValue}>{settings?.ttc_features_enabled ? "On" : "Off"}</Text>
-            </Pressable>
+            <ToggleRow
+              label="Intimacy tracking"
+              description="Optional. Record only a date, time, and the details you choose."
+              checked={settings?.intimacy_tracking_enabled ?? false}
+              onPress={() => updateCycleSettings({ intimacy_tracking_enabled: !(settings?.intimacy_tracking_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update intimacy tracking."))}
+            />
+            <ToggleRow
+              label="Trying to conceive"
+              description="Turn this on if you'd like Symptom Story to support TTC-related tracking and features. This setting does not estimate fertility or determine when you can become pregnant."
+              checked={settings?.ttc_features_enabled ?? false}
+              onPress={() => updateCycleSettings({ ttc_features_enabled: !(settings?.ttc_features_enabled ?? false) }).then(setSettings).catch(() => setError("Unable to update TTC preference."))}
+            />
             {settings?.intimacy_tracking_enabled && (
               <View style={styles.sensitiveSection}>
                 <Text accessibilityRole="header" style={styles.subheading}>Intimacy entries</Text>
@@ -619,8 +582,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                       <Text style={styles.muted}>{event.sperm_present ? `Sperm present: ${spermPresenceLabels[event.sperm_present]}` : "Sperm presence not recorded"}{event.note ? " · Private note added" : ""}</Text>
                     </View>
                     <View style={styles.eventActions}>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Edit intimacy entry on ${event.event_date}`} onPress={() => beginIntimacyEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete intimacy entry on ${event.event_date}`} onPress={() => removeIntimacy(event)} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Edit intimacy entry on ${event.event_date}`} hitSlop={6} onPress={() => beginIntimacyEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete intimacy entry on ${event.event_date}`} hitSlop={6} onPress={() => removeIntimacy(event)} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
                     </View>
                   </View>
                 ))}
@@ -680,8 +643,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                       <Text style={styles.muted}>{timeFromTimestamp(event.occurred_at)} · recorded date {event.event_date}</Text>
                     </View>
                     <View style={styles.eventActions}>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${eventLabels[event.event_type]} on ${event.event_date}`} onPress={() => beginEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${eventLabels[event.event_type]} on ${event.event_date}`} onPress={() => removeEvent(event)} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${eventLabels[event.event_type]} on ${event.event_date}`} hitSlop={6} onPress={() => beginEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${eventLabels[event.event_type]} on ${event.event_date}`} hitSlop={6} onPress={() => removeEvent(event)} style={styles.iconButton}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
                     </View>
                   </View>
                 ))}
@@ -724,7 +687,7 @@ const styles = StyleSheet.create({
   input: { minHeight: 48, borderWidth: 1, borderColor: "#CDD6D0", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, color: C.ink, backgroundColor: C.white },
   planInput: { minHeight: 120, textAlignVertical: "top" },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { minHeight: 42, paddingHorizontal: 13, borderRadius: 21, borderWidth: 1, borderColor: C.line, justifyContent: "center" },
+  chip: { minHeight: 48, paddingHorizontal: 16, borderRadius: 24, borderWidth: 1, borderColor: C.line, justifyContent: "center", alignItems: "center" },
   chipOn: { backgroundColor: C.sage, borderColor: C.moss },
   chipText: { fontSize: 14, fontWeight: "600", color: C.ink },
   editorTitle: { fontSize: 15, fontWeight: "700", color: C.moss },
@@ -740,7 +703,7 @@ const styles = StyleSheet.create({
   eventCopy: { flex: 1, gap: 2 },
   eventName: { fontSize: 14, fontWeight: "700", color: C.ink },
   eventActions: { flexDirection: "row", gap: 2 },
-  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  iconButton: { minWidth: 48, minHeight: 48, alignItems: "center", justifyContent: "center" },
   supportRow: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, gap: 3 },
   supportCategory: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: C.moss },
   supportTitle: { fontSize: 15, lineHeight: 20, fontWeight: "700", color: C.ink },

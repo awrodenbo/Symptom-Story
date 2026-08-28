@@ -58,17 +58,19 @@ import * as Notifications from "expo-notifications";
 import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
+import { theme } from "../src/theme/tokens";
+import { Button, Card, Field, Notice } from "../src/components";
 
 type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
 const C = {
-  ink: "#25342E",
-  muted: "#68766F",
-  moss: "#487263",
-  sage: "#DCEBE3",
-  cream: "#F8F6F0",
-  white: "#FFF",
-  line: "#DFE5E0",
-  danger: "#9A4F54",
+  ink: theme.colors.textPrimary,
+  muted: theme.colors.textMuted,
+  moss: theme.colors.brandPrimary,
+  sage: theme.colors.accentSage,
+  cream: theme.colors.background,
+  white: theme.colors.surface,
+  line: theme.colors.surfaceBorder,
+  danger: theme.colors.danger,
 };
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
@@ -114,79 +116,11 @@ const feelings = [
   "Hopeful",
 ];
 
-function Button({
-  label,
-  onPress,
-  secondary = false,
-  disabled = false,
-  icon,
-}: {
-  label: string;
-  onPress: () => void;
-  secondary?: boolean;
-  disabled?: boolean;
-  icon?: keyof typeof Ionicons.glyphMap;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      accessibilityState={{ disabled }}
-      hitSlop={4}
-      style={({ pressed }) => [
-        s.button,
-        secondary && s.buttonSecondary,
-        pressed && s.buttonPressed,
-        disabled && s.buttonDisabled,
-      ]}
-    >
-      {icon && (
-        <Ionicons name={icon} size={19} color={secondary ? C.moss : C.white} />
-      )}
-      <Text style={[s.buttonText, secondary && { color: C.moss }]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-function Card({ children }: { children: React.ReactNode }) {
-  return <View style={s.card}>{children}</View>;
-}
-function Field({
-  label,
-  ...props
-}: { label: string } & React.ComponentProps<typeof TextInput>) {
-  return (
-    <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor="#89958E"
-        style={[
-          s.input,
-          props.multiline && { minHeight: 110, textAlignVertical: "top" },
-        ]}
-        {...props}
-      />
-    </View>
-  );
-}
 function Busy() {
   return (
     <View style={s.center}>
       <ActivityIndicator size="large" color={C.moss} />
       <Text style={s.muted}>Loading your story…</Text>
-    </View>
-  );
-}
-function Notice({ text, error = false }: { text: string; error?: boolean }) {
-  return (
-    <View
-      accessibilityLiveRegion="polite"
-      style={[s.notice, error && { backgroundColor: "#F6E6E5" }]}
-    >
-      <Text style={[s.noticeText, error && { color: C.danger }]}>{text}</Text>
     </View>
   );
 }
@@ -788,7 +722,12 @@ function CheckIn({
         {error && <Notice error text={error} />}
         <View style={s.footerActions}>
           {step > 0 && (
-            <Button secondary label="Back" onPress={() => move(step - 1)} />
+            <Button
+              secondary
+              label="Back"
+              accessibilityLabel={`Back to ${sections[step - 1]}`}
+              onPress={() => move(step - 1)}
+            />
           )}
           <Button
             disabled={busy}
@@ -798,6 +737,13 @@ function CheckIn({
                 : step === sections.length - 1
                   ? "Save check-in"
                   : "Continue"
+            }
+            accessibilityLabel={
+              busy
+                ? "Saving check-in"
+                : step === sections.length - 1
+                  ? "Save check-in"
+                  : `Continue to ${sections[step + 1]}`
             }
             icon={step === sections.length - 1 ? "checkmark" : "arrow-forward"}
             onPress={() =>
@@ -1579,12 +1525,13 @@ const s = StyleSheet.create({
   scaleText: { fontSize: 16, fontWeight: "800", color: C.ink },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
-    minHeight: 44,
-    paddingHorizontal: 14,
-    borderRadius: 22,
+    minHeight: 48,
+    paddingHorizontal: 16,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: C.line,
     justifyContent: "center",
+    alignItems: "center",
   },
   chipOn: { backgroundColor: C.sage, borderColor: C.moss },
   row: { flexDirection: "row", gap: 10 },

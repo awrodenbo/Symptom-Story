@@ -16,23 +16,18 @@ import {
   type TodaysSupport as TodaysSupportResult,
 } from "./domain";
 
+import { theme } from "./theme/tokens";
+import { Card, Notice } from "./components";
+
 const C = {
-  ink: "#25342E",
-  muted: "#68766F",
-  moss: "#487263",
-  sage: "#DCEBE3",
-  white: "#FFF",
-  line: "#DFE5E0",
-  danger: "#9A4F54",
+  ink: theme.colors.textPrimary,
+  muted: theme.colors.textMuted,
+  moss: theme.colors.brandPrimary,
+  sage: theme.colors.accentSage,
+  white: theme.colors.surface,
+  line: theme.colors.surfaceBorder,
+  danger: theme.colors.danger,
 };
-
-function Card({ children }: { children: React.ReactNode }) {
-  return <View style={styles.card}>{children}</View>;
-}
-
-function Notice({ text, error = false }: { text: string; error?: boolean }) {
-  return <View accessibilityLiveRegion="polite" style={[styles.notice, error && styles.errorNotice]}><Text style={[styles.noticeText, error && styles.errorText]}>{text}</Text></View>;
-}
 
 function localDate(): string {
   const now = new Date();
