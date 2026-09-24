@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 type ToggleRowProps = {
   label: string;
@@ -11,6 +11,8 @@ type ToggleRowProps = {
 };
 
 export function ToggleRow({ label, description, checked, onPress, disabled = false }: ToggleRowProps) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const fullLabel = description ? `${label}. ${description}` : label;
 
   return (
@@ -31,7 +33,7 @@ export function ToggleRow({ label, description, checked, onPress, disabled = fal
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   row: {
     minHeight: theme.touchTarget.minHeight + 10,
     borderTopWidth: 1,
