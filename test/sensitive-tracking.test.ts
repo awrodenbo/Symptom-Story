@@ -30,7 +30,7 @@ function createHarness() {
             settings = {
               user_id: 'user-a', tracking_enabled: false, birth_control_tracking_enabled: false,
               intimacy_tracking_enabled: false, ttc_features_enabled: false, reminder_enabled: false,
-              reminder_days_before: 7, created_at: '', updated_at: '', ...state.payload,
+              reminder_days_before: 7, typical_cycle_length: null, typical_period_length: null, created_at: '', updated_at: '', ...state.payload,
             } as CycleSettingsRow;
           }
           return { data: settings, error: null };
@@ -42,7 +42,7 @@ function createHarness() {
       return builder;
     },
   };
-  return { api: createCycleApi(client as never), calls, enableIntimacy: async () => { settings = { user_id: 'user-a', tracking_enabled: false, birth_control_tracking_enabled: false, intimacy_tracking_enabled: true, ttc_features_enabled: false, reminder_enabled: false, reminder_days_before: 7, created_at: '', updated_at: '' }; } };
+  return { api: createCycleApi(client as never), calls, enableIntimacy: async () => { settings = { user_id: 'user-a', tracking_enabled: false, birth_control_tracking_enabled: false, intimacy_tracking_enabled: true, ttc_features_enabled: false, reminder_enabled: false, reminder_days_before: 7, typical_cycle_length: null, typical_period_length: null, created_at: '', updated_at: '' }; } };
 }
 
 const input = {
