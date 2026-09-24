@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   LayoutAnimation,
   Pressable,
   ScrollView,
@@ -114,6 +115,42 @@ function dateFromTimestamp(value: string): string {
   return value.slice(0, 10);
 }
 
+function timestampForDate(date: string, existingTimestamp?: string): string {
+  const now = new Date();
+  const time = existingTimestamp ? timeFromTimestamp(existingTimestamp) : `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const offset = -now.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const hours = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+  const minutes = String(Math.abs(offset) % 60).padStart(2, "0");
+  return `${date}T${time}:00${sign}${hours}:${minutes}`;
+}
+
+function monthKey(date: string): string { return date.slice(0, 7); }
+
+function shiftMonth(month: string, amount: number): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, monthNumber - 1 + amount, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(month: string): string {
+  const [year, monthNumber] = month.split("-").map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(year, monthNumber - 1, 1)));
+}
+
+function calendarDays(month: string): Array<{ date: string; day: number } | null> {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const firstWeekday = new Date(Date.UTC(year, monthNumber - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => {
+      const day = index + 1;
+      return { date: `${month}-${String(day).padStart(2, "0")}`, day };
+    }),
+  ];
+}
+
 function timeFromTimestamp(value: string): string {
   return value.slice(11, 16);
 }
@@ -155,6 +192,9 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [intimacyTimestamp, setIntimacyTimestamp] = useState(localTimestamp);
   const [spermPresent, setSpermPresent] = useState<SpermPresence | null>(null);
   const [intimacyNote, setIntimacyNote] = useState("");
+  const [calendarTarget, setCalendarTarget] = useState<"cycle" | "intimacy" | null>(null);
+  const [calendarMonth, setCalendarMonth] = useState(monthKey(localDate()));
+  const [pendingDelete, setPendingDelete] = useState<CycleEventRow | null>(null);
 
   async function load() {
     setLoading(true);
@@ -274,6 +314,23 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     setFlowLevel(event.flow_level);
   }
 
+  function openCalendar(target: "cycle" | "intimacy") {
+    const selectedDate = target === "cycle" ? eventDate : intimacyDate;
+    setCalendarMonth(monthKey(selectedDate || localDate()));
+    setCalendarTarget(target);
+  }
+
+  function chooseCalendarDate(date: string) {
+    if (calendarTarget === "cycle") {
+      setEventDate(date);
+      setOccurredAt(timestampForDate(date, occurredAt));
+    } else if (calendarTarget === "intimacy") {
+      setIntimacyDate(date);
+      setIntimacyTimestamp(timestampForDate(date, intimacyTimestamp));
+    }
+    setCalendarTarget(null);
+  }
+
   async function saveEvent() {
     setBusy(true);
     setError("");
@@ -293,22 +350,25 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   }
 
   function removeEvent(event: CycleEventRow) {
-    Alert.alert("Delete cycle event?", "This cannot be undone.", [
-      { text: "Cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => {
-        setBusy(true);
-        try {
-          await deleteCycleEvent(event.id);
-          await load();
-          setMessage("Cycle event deleted.");
-          if (editing?.id === event.id) resetEditor();
-        } catch (deleteError) {
-          setError(deleteError instanceof Error ? deleteError.message : "Unable to delete cycle event.");
-        } finally {
-          setBusy(false);
-        }
-      } },
-    ]);
+    setPendingDelete(event);
+  }
+
+  async function confirmRemoveEvent() {
+    if (!pendingDelete) return;
+    const event = pendingDelete;
+    setBusy(true);
+    setError("");
+    setPendingDelete(null);
+    try {
+      await deleteCycleEvent(event.id);
+      await load();
+      setMessage("Cycle event deleted.");
+      if (editing?.id === event.id) resetEditor();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete cycle event.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function enableTracking() {
@@ -434,7 +494,11 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     }
   }
 
+  const selectedCalendarDate = calendarTarget === "cycle" ? eventDate : intimacyDate;
+  const calendarCells = calendarDays(calendarMonth);
+
   return (
+    <>
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       <Text style={styles.kicker}>YOUR CYCLE</Text>
       <Text accessibilityRole="header" style={styles.title}>Cycle</Text>
@@ -558,8 +622,11 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                 {intimacyFormOpen && <Text style={styles.editorTitle}>{intimacyEditing ? "Edit intimacy entry" : "New intimacy entry"}</Text>}
                 {intimacyFormOpen && (
                   <>
-                    <Field label="Local calendar date (YYYY-MM-DD)" value={intimacyDate} onChangeText={setIntimacyDate} />
-                    <Field label="Local date and time" value={intimacyTimestamp} onChangeText={setIntimacyTimestamp} placeholder="YYYY-MM-DDTHH:MM:SS-04:00" />
+                    <Text style={styles.label}>Date</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Choose intimacy date. Currently ${intimacyDate}`} onPress={() => openCalendar("intimacy")} style={styles.datePickerButton}>
+                      <Ionicons name="calendar-outline" size={20} color={C.moss} />
+                      <Text style={styles.datePickerText}>{intimacyDate}</Text>
+                    </Pressable>
                     <Text style={styles.label}>Sperm present (optional)</Text>
                     <View style={styles.wrap}>
                       {spermPresenceValues.map((value) => (
@@ -615,8 +682,11 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
             {(editing || eventType !== "period_start" || eventDate !== localDate()) && (
               <Text style={styles.editorTitle}>{editing ? `Editing ${eventLabels[eventType]}` : `New ${eventLabels[eventType]}`}</Text>
             )}
-            <Field label="Local calendar date (YYYY-MM-DD)" value={eventDate} onChangeText={setEventDate} />
-            <Field label="Local date and time" value={occurredAt} onChangeText={setOccurredAt} placeholder="YYYY-MM-DDTHH:MM:SS-04:00" />
+            <Text style={styles.label}>Date</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Choose cycle event date. Currently ${eventDate}`} onPress={() => openCalendar("cycle")} style={styles.datePickerButton}>
+              <Ionicons name="calendar-outline" size={20} color={C.moss} />
+              <Text style={styles.datePickerText}>{eventDate}</Text>
+            </Pressable>
             <View style={styles.row}>
               <Button disabled={busy} label={busy ? "Saving..." : editing ? "Save changes" : "Save event"} onPress={saveEvent} />
               {editing && <Button secondary label="Cancel" onPress={resetEditor} />}
@@ -655,6 +725,39 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
         </>
       )}
     </ScrollView>
+    <Modal animationType="fade" transparent visible={calendarTarget !== null} onRequestClose={() => setCalendarTarget(null)}>
+      <View style={styles.modalBackdrop}>
+        <View accessibilityViewIsModal style={styles.modalCard}>
+          <View style={styles.calendarHeader}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth((month) => shiftMonth(month, -1))} style={styles.iconButton}><Ionicons name="chevron-back" size={22} color={C.moss} /></Pressable>
+            <Text accessibilityRole="header" style={styles.calendarTitle}>{monthLabel(calendarMonth)}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth((month) => shiftMonth(month, 1))} style={styles.iconButton}><Ionicons name="chevron-forward" size={22} color={C.moss} /></Pressable>
+          </View>
+          <View style={styles.calendarGrid}>
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <Text key={day} style={styles.weekday}>{day.slice(0, 1)}</Text>)}
+            {calendarCells.map((cell, index) => cell ? (
+              <Pressable key={cell.date} accessibilityRole="button" accessibilityLabel={`Choose ${cell.date}`} accessibilityState={{ selected: selectedCalendarDate === cell.date }} onPress={() => chooseCalendarDate(cell.date)} style={[styles.calendarDay, selectedCalendarDate === cell.date && styles.calendarDaySelected]}>
+                <Text style={[styles.calendarDayText, selectedCalendarDate === cell.date && styles.calendarDayTextSelected]}>{cell.day}</Text>
+              </Pressable>
+            ) : <View key={`blank-${index}`} style={styles.calendarDay} />)}
+          </View>
+          <Button secondary label="Cancel" onPress={() => setCalendarTarget(null)} />
+        </View>
+      </View>
+    </Modal>
+    <Modal animationType="fade" transparent visible={pendingDelete !== null} onRequestClose={() => setPendingDelete(null)}>
+      <View style={styles.modalBackdrop}>
+        <View accessibilityViewIsModal style={styles.modalCard}>
+          <Text accessibilityRole="header" style={styles.heading}>Delete cycle event?</Text>
+          <Text style={styles.body}>{pendingDelete ? `${eventLabels[pendingDelete.event_type]} on ${pendingDelete.event_date} will be permanently deleted. This cannot be undone.` : ""}</Text>
+          <View style={styles.row}>
+            <Button secondary disabled={busy} label="Cancel" onPress={() => setPendingDelete(null)} />
+            <Pressable accessibilityRole="button" disabled={busy} onPress={confirmRemoveEvent} style={({ pressed }) => [styles.deleteButton, pressed && styles.buttonPressed, busy && styles.buttonDisabled]}><Text style={styles.deleteButtonText}>{busy ? "Deleting..." : "Delete event"}</Text></Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -707,4 +810,18 @@ const styles = StyleSheet.create({
   supportRow: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, gap: 3 },
   supportCategory: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: C.moss },
   supportTitle: { fontSize: 15, lineHeight: 20, fontWeight: "700", color: C.ink },
+  datePickerButton: { minHeight: 48, borderWidth: 1, borderColor: theme.colors.inputBorder, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: C.white },
+  datePickerText: { fontSize: 15, color: C.ink, fontWeight: "600" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", alignItems: "center", justifyContent: "center", padding: 20 },
+  modalCard: { width: "100%", maxWidth: 420, backgroundColor: C.white, borderRadius: 20, borderWidth: 1, borderColor: C.line, padding: 18, gap: 14 },
+  calendarHeader: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  calendarTitle: { flex: 1, textAlign: "center", fontSize: 18, fontWeight: "700", color: C.ink },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  weekday: { width: "14.2857%", textAlign: "center", fontSize: 12, fontWeight: "700", color: C.muted, paddingVertical: 8 },
+  calendarDay: { width: "14.2857%", minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 22 },
+  calendarDaySelected: { backgroundColor: C.moss },
+  calendarDayText: { fontSize: 14, color: C.ink },
+  calendarDayTextSelected: { color: C.white, fontWeight: "800" },
+  deleteButton: { minHeight: 48, borderRadius: 14, backgroundColor: C.danger, paddingHorizontal: 15, flexGrow: 1, alignItems: "center", justifyContent: "center" },
+  deleteButtonText: { fontSize: 14, fontWeight: "800", color: C.white, textAlign: "center" },
 });
