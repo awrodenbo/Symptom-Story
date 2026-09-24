@@ -192,7 +192,7 @@ export function createCycleApi(client: CycleDataClient) {
   async function updateCycleSettings(values: CycleSettingsUpdate): Promise<CycleSettingsRow> {
     validateCycleSettingsUpdate(values);
     const userId = await authenticatedUserId(client);
-    const result = await client.from('cycle_settings').upsert({ user_id: userId, ...values }).select('*').single();
+    const result = await client.from('cycle_settings').upsert({ user_id: userId, ...values }, { onConflict: 'user_id' }).select('*').single();
     fail(result.error);
     return result.data as CycleSettingsRow;
   }
