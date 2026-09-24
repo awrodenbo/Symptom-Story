@@ -1074,7 +1074,7 @@ export default function App() {
           <Button
             secondary
             label="Manage medications"
-            onPress={() => setTab("Profile")}
+            onPress={() => setTab("Meds")}
           />
         </Card>
       </ScrollView>
@@ -1371,67 +1371,9 @@ function ProfileScreen({
         </View>
       </Card>
       <Card>
-        <Text accessibilityRole="header" style={s.heading}>
-          Add medication
-        </Text>
-        <Field
-          label="Medication name"
-          value={name}
-          onChangeText={setName}
-          maxLength={120}
-        />
-        <Field
-          label="Schedule (optional)"
-          value={schedule}
-          onChangeText={setSchedule}
-          maxLength={120}
-        />
-        <Button
-          disabled={!name.trim()}
-          label="Add medication"
-          onPress={async () => {
-            await run(
-              () => addMedication(userId, name.trim(), schedule.trim()),
-              "Medication added.",
-            );
-            setName("");
-            setSchedule("");
-          }}
-        />
+        <Text accessibilityRole="header" style={s.heading}>Medications</Text>
+        <Text style={s.body}>Medication schedules and dose logging now live in the Meds calendar so there is one place to manage them.</Text>
       </Card>
-      {medications.length === 0 ? (
-        <Card>
-          <Text accessibilityRole="header" style={s.heading}>
-            No medications
-          </Text>
-          <Text style={s.body}>Medications you add will appear here.</Text>
-        </Card>
-      ) : (
-        medications.map((m) => (
-          <Card key={m.id}>
-            <Text accessibilityRole="header" style={s.heading}>
-              {m.name}
-            </Text>
-            <Text style={s.muted}>{m.schedule || "No schedule recorded"}</Text>
-            <View style={s.row}>
-              <Button
-                secondary
-                label="Log taken"
-                onPress={() =>
-                  run(() => logMedication(userId, m.id), "Medication logged.")
-                }
-              />
-              <Button
-                secondary
-                label="Remove"
-                onPress={() =>
-                  run(() => deleteMedication(m.id), "Medication removed.")
-                }
-              />
-            </View>
-          </Card>
-        ))
-      )}
       <Card>
         <Text accessibilityRole="header" style={s.heading}>
           Data & Privacy
