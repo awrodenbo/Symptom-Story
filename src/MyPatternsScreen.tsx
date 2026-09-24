@@ -1,22 +1,15 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { loadCycleEvents, type CheckInRow } from "./api";
 import { analyzePatterns, type CycleEvent, type PatternAnalysis } from "./domain";
 
-import { theme } from "./theme/tokens";
+import { useTheme } from "./theme/context";
 import { Card, Notice } from "./components";
 
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
-
 export default function MyPatternsScreen({ checkIns }: { checkIns: CheckInRow[] }) {
+  const { theme } = useTheme();
+  const C = React.useMemo(() => ({ ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger }), [theme]);
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const [analysis, setAnalysis] = useState<PatternAnalysis | null>(null);
   const [error, setError] = useState("");
 
@@ -60,7 +53,9 @@ export default function MyPatternsScreen({ checkIns }: { checkIns: CheckInRow[] 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import("./theme/tokens").ThemeTokens) => {
+  const C = { ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger };
+  return StyleSheet.create({
   container: { gap: 10 },
   loading: { minHeight: 70, alignItems: "center", justifyContent: "center", gap: 8 },
   kicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, color: C.moss },
@@ -73,4 +68,5 @@ const styles = StyleSheet.create({
   errorNotice: { backgroundColor: "#F6E6E5" },
   noticeText: { fontSize: 13, lineHeight: 18, color: C.moss, fontWeight: "600" },
   errorText: { color: C.danger },
-});
+  });
+};
