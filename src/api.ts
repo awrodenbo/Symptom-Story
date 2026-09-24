@@ -18,8 +18,8 @@ export type {
 
 export type Profile = { display_name: string; tracking_mode: 'pmdd' | 'postpartum'; onboarding_complete: boolean };
 export type CheckInRow = { id: string; user_id: string; entry_date: string; mood: number; sleep: number | null; energy: number | null; symptoms: string[]; feelings?: string[] | null; medication_taken: boolean | null; reflection: string | null; created_at: string };
-export type MedicationRow = { id: string; user_id: string; name: string; schedule: string | null; created_at: string };
-export type MedicationLogRow = { id: string; user_id: string; medication_id: string; taken_at: string };
+export type MedicationRow = { id: string; user_id: string; name: string; schedule: string | null; frequency: 'daily' | 'weekly' | 'as_needed' | 'custom'; time_of_day: 'morning' | 'afternoon' | 'evening' | 'night' | null; scheduled_time: string | null; weekdays: number[]; created_at: string };
+export type MedicationLogRow = { id: string; user_id: string; medication_id: string; taken_at: string; scheduled_date: string | null; status: 'taken' | 'skipped' | 'missed' };
 export type JournalRow = { id: string; user_id: string; body: string; created_at: string };
 export const {
   loadCycleSettings,
@@ -64,9 +64,11 @@ export async function saveCheckIn(userId: string, values: Omit<CheckInRow, 'id'|
 }
 
 export async function deleteCheckIn(id: string) { const result = await supabase.from('check_ins').delete().eq('id', id); fail(result.error); }
-export async function addMedication(userId: string, name: string, schedule: string) { const result = await supabase.from('medications').insert({ user_id: userId, name, schedule: schedule || null }).select().single(); fail(result.error); return result.data as MedicationRow; }
+export type MedicationScheduleInput = { name: string; schedule?: string; frequency: MedicationRow['frequency']; time_of_day?: MedicationRow['time_of_day']; scheduled_time?: string | null; weekdays?: number[] };
+export async function addMedication(userId: string, input: MedicationScheduleInput) { const result = await supabase.from('medications').insert({ user_id: userId, name: input.name, schedule: input.schedule || null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] }).select().single(); fail(result.error); return result.data as MedicationRow; }
+export async function updateMedication(id: string, input: MedicationScheduleInput) { const result = await supabase.from('medications').update({ name: input.name, schedule: input.schedule || null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] }).eq('id', id).select().single(); fail(result.error); return result.data as MedicationRow; }
 export async function deleteMedication(id: string) { const result = await supabase.from('medications').delete().eq('id', id); fail(result.error); }
-export async function logMedication(userId: string, medicationId: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
+export async function logMedication(userId: string, medicationId: string, scheduledDate?: string, status: MedicationLogRow['status'] = 'taken', takenAt?: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId, scheduled_date: scheduledDate ?? today(), status, ...(takenAt ? { taken_at: takenAt } : {}) }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
 export async function addJournal(userId: string, body: string) { const result = await supabase.from('journal_entries').insert({ user_id: userId, body }).select().single(); fail(result.error); return result.data as JournalRow; }
 export async function deleteJournal(id: string) { const result = await supabase.from('journal_entries').delete().eq('id', id); fail(result.error); }
 export async function loadExportPayload() {
