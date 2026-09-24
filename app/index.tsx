@@ -1,7 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -59,20 +58,11 @@ import * as Notifications from "expo-notifications";
 import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
-import { theme, themes, type ThemeId } from "../src/theme/tokens";
+import { themes, type ThemeId, type ThemeTokens } from "../src/theme/tokens";
+import { useTheme } from "../src/theme/context";
 import { Button, Card, Field, Notice } from "../src/components";
 
 type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  cream: theme.colors.background,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
   ["Check-In", "heart-outline"],
@@ -117,7 +107,24 @@ const feelings = [
   "Hopeful",
 ];
 
+function useAppPalette() {
+  const { theme } = useTheme();
+  const C = useMemo(() => ({
+    ink: theme.colors.textPrimary,
+    muted: theme.colors.textMuted,
+    moss: theme.colors.brandPrimary,
+    sage: theme.colors.accentSage,
+    cream: theme.colors.background,
+    white: theme.colors.surface,
+    line: theme.colors.surfaceBorder,
+    danger: theme.colors.danger,
+  }), [theme]);
+  const s = useMemo(() => createStyles(theme), [theme]);
+  return { theme, C, s };
+}
+
 function Busy() {
+  const { C, s } = useAppPalette();
   return (
     <View style={s.center}>
       <ActivityIndicator size="large" color={C.moss} />
@@ -127,6 +134,7 @@ function Busy() {
 }
 
 function Auth({ recoveryError = "" }: { recoveryError?: string }) {
+  const { C, s } = useAppPalette();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
@@ -281,6 +289,7 @@ function Auth({ recoveryError = "" }: { recoveryError?: string }) {
 }
 
 function ResetPassword({ onDone }: { onDone: () => void }) {
+  const { C, s } = useAppPalette();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
@@ -354,6 +363,7 @@ function RecoveryError({
   onDismiss: () => void;
   signedIn: boolean;
 }) {
+  const { C, s } = useAppPalette();
   return (
     <ScrollView contentContainerStyle={s.auth}>
       <View style={s.brand}>
@@ -386,6 +396,7 @@ function Onboarding({
   userId: string;
   onDone: (p: Profile) => void;
 }) {
+  const { C, s } = useAppPalette();
   const [name, setName] = useState("");
   const [tracking, setTracking] = useState<"pmdd" | "postpartum">("pmdd");
   const [busy, setBusy] = useState(false);
@@ -467,6 +478,7 @@ function CheckIn({
   onSupport: () => void;
   reducedMotion: boolean;
 }) {
+  const { C, s } = useAppPalette();
   const [step, setStep] = useState(0);
   const [mood, setMood] = useState(existing?.mood ?? 3);
   const [sleep, setSleep] = useState(existing?.sleep ?? 3);
@@ -766,6 +778,7 @@ function CheckIn({
   );
 }
 function Safety({ close }: { close: () => void }) {
+  const { C, s } = useAppPalette();
   return (
     <ScrollView contentContainerStyle={s.scroll}>
       <Button secondary label="Close" icon="close" onPress={close} />
@@ -800,6 +813,7 @@ function Safety({ close }: { close: () => void }) {
 }
 
 export default function App() {
+  const { theme: activeTheme, C, s } = useAppPalette();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Awaited<
@@ -812,16 +826,6 @@ export default function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [appearance, setAppearance] = useState<ThemeId>("sage");
-  useEffect(() => {
-    AsyncStorage.getItem("symptom-story:appearance").then((saved) => {
-      if (saved && saved in themes) setAppearance(saved as ThemeId);
-    });
-  }, []);
-  async function changeAppearance(next: ThemeId) {
-    setAppearance(next);
-    await AsyncStorage.setItem("symptom-story:appearance", next);
-  }
   const { width } = useWindowDimensions();
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
@@ -1129,8 +1133,6 @@ export default function App() {
         userId={session.user.id}
         entries={data.journal}
         run={action}
-        appearance={appearance}
-        onAppearanceChange={changeAppearance}
       />
     );
   } else
@@ -1144,7 +1146,6 @@ export default function App() {
         run={action}
       />
     );
-  const activeTheme = themes[appearance];
   return (
     <View style={[s.shell, { backgroundColor: activeTheme.colors.background }]}>
       <SafeAreaView
@@ -1220,6 +1221,7 @@ function JournalScreen({
   entries: JournalRow[];
   run: (w: () => Promise<unknown>, m: string) => Promise<void>;
 }) {
+  const { C, s } = useAppPalette();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   async function save() {
@@ -1284,8 +1286,6 @@ function ProfileScreen({
   checkIns,
   journal,
   run,
-  appearance,
-  onAppearanceChange,
 }: {
   userId: string;
   profile: Profile;
@@ -1293,9 +1293,9 @@ function ProfileScreen({
   checkIns: CheckInRow[];
   journal: JournalRow[];
   run: (w: () => Promise<unknown>, m: string) => Promise<void>;
-  appearance: ThemeId;
-  onAppearanceChange: (theme: ThemeId) => Promise<void>;
 }) {
+  const { C, s } = useAppPalette();
+  const { themeId: appearance, setThemeId: onAppearanceChange } = useTheme();
   const [name, setName] = useState("");
   const [schedule, setSchedule] = useState("");
   async function exportData() {
@@ -1461,7 +1461,18 @@ function ProfileScreen({
   );
 }
 
-const s = StyleSheet.create({
+const createStyles = (theme: ThemeTokens) => {
+  const C = {
+    ink: theme.colors.textPrimary,
+    muted: theme.colors.textMuted,
+    moss: theme.colors.brandPrimary,
+    sage: theme.colors.accentSage,
+    cream: theme.colors.background,
+    white: theme.colors.surface,
+    line: theme.colors.surfaceBorder,
+    danger: theme.colors.danger,
+  };
+  return StyleSheet.create({
   shell: { flex: 1, backgroundColor: "#E9ECE8", alignItems: "center" },
   app: { flex: 1, width: "100%", backgroundColor: C.cream },
   scroll: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 32, gap: 14 },
@@ -1660,4 +1671,5 @@ const s = StyleSheet.create({
   themeSwatches: { flexDirection: "row" },
   themeSwatch: { width: 22, height: 22, borderRadius: 11, marginRight: -5, borderWidth: 1, borderColor: "#FFFFFF" },
   themeName: { flex: 1, fontSize: 15, fontWeight: "800" },
-});
+  });
+};
