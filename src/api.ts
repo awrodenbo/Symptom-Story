@@ -82,7 +82,14 @@ export async function addMedication(userId: string, input: MedicationScheduleInp
   }
   fail(result.error); return result.data as MedicationRow;
 }
-export async function updateMedication(id: string, input: MedicationScheduleInput) { const result = await supabase.from('medications').update({ name: input.name, schedule: input.schedule || null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] }).eq('id', id).select().single(); fail(result.error); return result.data as MedicationRow; }
+export async function updateMedication(id: string, input: MedicationScheduleInput) {
+  const payload = { name: input.name, schedule: input.schedule || legacyMedicationSchedule(input), frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
+  let result = await supabase.from('medications').update(payload).eq('id', id).select().single();
+  if (result.error && /frequency|time_of_day|scheduled_time|weekdays|schema cache|column/i.test(result.error.message)) {
+    result = await supabase.from('medications').update({ name: input.name, schedule: legacyMedicationSchedule(input) }).eq('id', id).select().single();
+  }
+  fail(result.error); return result.data as MedicationRow;
+}
 export async function deleteMedication(id: string) { const result = await supabase.from('medications').delete().eq('id', id); fail(result.error); }
 export async function logMedication(userId: string, medicationId: string, scheduledDate?: string, status: MedicationLogRow['status'] = 'taken', takenAt?: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId, scheduled_date: scheduledDate ?? today(), status, ...(takenAt ? { taken_at: takenAt } : {}) }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
 export async function addFoodEntry(userId: string, input: Omit<FoodEntryRow, 'id'|'user_id'|'created_at'>) {
