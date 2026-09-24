@@ -467,8 +467,11 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const history = calculateCycleHistory(domainEvents);
   const learnedNextPeriod = estimateNextPeriod(domainEvents);
   const latestStart = events.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort().at(-1) ?? null;
-  const baselineNextDate = latestStart && settings?.typical_cycle_length
-    ? addCalendarDays(latestStart, settings.typical_cycle_length)
+  const baselineCycleLength = settings?.typical_cycle_length ?? (Number.isInteger(Number(cycleLengthDraft)) && Number(cycleLengthDraft) >= 15 && Number(cycleLengthDraft) <= 90 ? Number(cycleLengthDraft) : null);
+  const baselinePeriodLength = settings?.typical_period_length ?? (Number.isInteger(Number(periodLengthDraft)) && Number(periodLengthDraft) >= 1 && Number(periodLengthDraft) <= 20 ? Number(periodLengthDraft) : 5);
+  const baselineStart = latestStart ?? (/^\d{4}-\d{2}-\d{2}$/.test(lastPeriodDraft.trim()) ? lastPeriodDraft.trim() : null);
+  const baselineNextDate = baselineStart && baselineCycleLength
+    ? addCalendarDays(baselineStart, baselineCycleLength)
     : null;
   const nextPeriod = learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate
     ? learnedNextPeriod
@@ -477,7 +480,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
       : learnedNextPeriod;
   const recordedPeriodDays = recordedPeriodDates(events);
   const predictedPeriodEnd = nextPeriod.estimatedDate
-    ? addCalendarDays(nextPeriod.estimatedDate, Math.max(1, settings?.typical_period_length ?? 5) - 1)
+    ? addCalendarDays(nextPeriod.estimatedDate, Math.max(1, baselinePeriodLength) - 1)
     : null;
   const phase = estimateCyclePhase(domainEvents, localDate());
   const grouped = events.reduce<Record<string, CycleEventRow[]>>((groups, event) => {
