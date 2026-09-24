@@ -83,9 +83,21 @@ export async function updateMedication(id: string, input: MedicationScheduleInpu
   fail(result.error); return result.data as MedicationRow;
 }
 export async function deleteMedication(id: string) { const result = await supabase.from('medications').delete().eq('id', id); fail(result.error); }
-export async function logMedication(userId: string, medicationId: string, scheduledDate?: string, status: MedicationLogRow['status'] = 'taken', takenAt?: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId, scheduled_date: scheduledDate ?? today(), status, ...(takenAt ? { taken_at: takenAt } : {}) }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
+export async function logMedication(userId: string, medicationId: string, scheduledDate?: string, status: MedicationLogRow['status'] = 'taken', takenAt?: string) {
+  const date = scheduledDate ?? today();
+  const existing = await supabase.from('medication_logs').select('id').eq('user_id', userId).eq('medication_id', medicationId).eq('scheduled_date', date).maybeSingle();
+  fail(existing.error);
+  const payload = { user_id: userId, medication_id: medicationId, scheduled_date: date, status, ...(takenAt ? { taken_at: takenAt } : {}) };
+  const result = existing.data?.id
+    ? await supabase.from('medication_logs').update(payload).eq('id', existing.data.id).select().single()
+    : await supabase.from('medication_logs').insert(payload).select().single();
+  fail(result.error); return result.data as MedicationLogRow;
+}
 export async function addFoodEntry(userId: string, input: Omit<FoodEntryRow, 'id'|'user_id'|'created_at'>) {
   const result = await supabase.from('food_entries').insert({ user_id: userId, ...input }).select().single(); fail(result.error); return result.data as FoodEntryRow;
+}
+export async function updateFoodEntry(id: string, input: Omit<FoodEntryRow, 'id'|'user_id'|'created_at'>) {
+  const result = await supabase.from('food_entries').update(input).eq('id', id).select().single(); fail(result.error); return result.data as FoodEntryRow;
 }
 export async function deleteFoodEntry(id: string) { const result = await supabase.from('food_entries').delete().eq('id', id); fail(result.error); }
 export async function addJournal(userId: string, body: string) { const result = await supabase.from('journal_entries').insert({ user_id: userId, body }).select().single(); fail(result.error); return result.data as JournalRow; }
