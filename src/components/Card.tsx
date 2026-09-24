@@ -1,12 +1,14 @@
 import React from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   card: {
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
