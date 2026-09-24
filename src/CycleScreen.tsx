@@ -197,6 +197,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [intimacyTimestamp, setIntimacyTimestamp] = useState(localTimestamp);
   const [spermPresent, setSpermPresent] = useState<SpermPresence | null>(null);
   const [intimacyNote, setIntimacyNote] = useState("");
+  const [lastPeriodDraft, setLastPeriodDraft] = useState("");
   const [cycleLengthDraft, setCycleLengthDraft] = useState("");
   const [periodLengthDraft, setPeriodLengthDraft] = useState("");
   const todayParts = localDate().split("-").map(Number);
@@ -212,6 +213,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
       setPlan(nextPlan);
       setBirthControl(nextBirthControl);
       setIntimacyEvents(nextIntimacy);
+      const latestRecordedStart = nextEvents.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort().at(-1) ?? "";
+      setLastPeriodDraft(latestRecordedStart);
       setCycleLengthDraft(nextSettings?.typical_cycle_length ? String(nextSettings.typical_cycle_length) : "");
       setPeriodLengthDraft(nextSettings?.typical_period_length ? String(nextSettings.typical_period_length) : "");
       if (nextBirthControl) {
@@ -374,8 +377,13 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   }
 
   async function saveCycleBaseline() {
+    const lastPeriod = lastPeriodDraft.trim();
     const cycleLength = Number(cycleLengthDraft);
     const periodLength = Number(periodLengthDraft);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastPeriod) || Number.isNaN(Date.parse(lastPeriod + "T00:00:00"))) {
+      setError("Enter the first day of your last period as YYYY-MM-DD.");
+      return;
+    }
     if (!Number.isInteger(cycleLength) || cycleLength < 15 || cycleLength > 90) {
       setError("Enter your usual cycle length between 15 and 90 days.");
       return;
@@ -388,7 +396,12 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     setError("");
     try {
       const next = await updateCycleSettings({ typical_cycle_length: cycleLength, typical_period_length: periodLength });
+      const hasStart = events.some((event) => event.event_type === "period_start" && event.event_date === lastPeriod);
+      if (!hasStart) {
+        await createCycleEvent({ event_type: "period_start", event_date: lastPeriod, occurred_at: lastPeriod + "T12:00:00", flow_level: null });
+      }
       setSettings(next);
+      await load();
       setMessage("Your starting cycle estimate was saved.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Unable to save cycle estimate.");
