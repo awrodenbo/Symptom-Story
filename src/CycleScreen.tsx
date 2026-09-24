@@ -202,6 +202,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [periodLengthDraft, setPeriodLengthDraft] = useState("");
   const todayParts = localDate().split("-").map(Number);
   const [calendarMonth, setCalendarMonth] = useState({ year: todayParts[0], month: todayParts[1] - 1 });
+  const [selectedCycleDate, setSelectedCycleDate] = useState(localDate);
 
   async function load() {
     setLoading(true);
@@ -607,13 +608,19 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                 const hasPeriod = recordedPeriodDays.has(date);
                 const predicted = Boolean(nextPeriod.estimatedDate && predictedPeriodEnd && dateFallsWithin(date, nextPeriod.estimatedDate, predictedPeriodEnd));
                 const isToday = date === localDate();
-                return <Pressable key={date} accessibilityRole="button" accessibilityLabel={friendlyDate(date)} onPress={() => { setEventDate(date); setOccurredAt(`${date}${localTimestamp().slice(10)}`); }} style={[styles.calendarDay, hasPeriod && styles.calendarPeriod, predicted && !hasPeriod && styles.calendarPredicted, isToday && styles.calendarToday]}>
+                return <Pressable key={date} accessibilityRole="button" accessibilityLabel={friendlyDate(date)} onPress={() => { setSelectedCycleDate(date); setEventDate(date); setOccurredAt(`${date}${localTimestamp().slice(10)}`); }} style={[styles.calendarDay, hasPeriod && styles.calendarPeriod, predicted && !hasPeriod && styles.calendarPredicted, isToday && styles.calendarToday, selectedCycleDate === date && { borderWidth: 2, borderColor: C.moss }]}>
                   <Text style={[styles.calendarDayText, hasPeriod && styles.calendarPeriodText]}>{day}</Text>
                   {recorded.length > 0 && <View style={styles.calendarDot} />}
                 </Pressable>;
               })}
             </View>
             <View style={styles.legend}><View style={[styles.legendSwatch, styles.calendarPeriod]} /><Text style={styles.muted}>Recorded</Text><View style={[styles.legendSwatch, styles.calendarPredicted]} /><Text style={styles.muted}>Predicted</Text></View>
+            <View style={{ marginTop: 12, gap: 6 }}>
+              <Text style={styles.heading}>{friendlyDate(selectedCycleDate)}</Text>
+              {(grouped[selectedCycleDate] ?? []).length === 0 ? <Text style={styles.muted}>No cycle events recorded for this day.</Text> : (grouped[selectedCycleDate] ?? []).map((event) => <Pressable key={event.id} onPress={() => beginEdit(event)}><Text style={styles.body}>{eventLabels[event.event_type]}{event.flow_level ? " · " + friendlyFlow(event.flow_level) : ""} · tap to edit</Text></Pressable>)}
+              {recordedPeriodDays.has(selectedCycleDate) && <Text style={styles.muted}>This day falls within a recorded period.</Text>}
+              {nextPeriod.estimatedDate && predictedPeriodEnd && dateFallsWithin(selectedCycleDate, nextPeriod.estimatedDate, predictedPeriodEnd) && !recordedPeriodDays.has(selectedCycleDate) && <Text style={styles.muted}>This day falls within the estimated next period window.</Text>}
+            </View>
           </View>
 
           <View style={styles.card}>
