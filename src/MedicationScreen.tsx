@@ -13,20 +13,21 @@ function storedSchedule(m:MedicationRow){
 function due(m:MedicationRow,date:string){
  const day=new Date(date+"T00:00:00").getDay(), saved=storedSchedule(m);
  const frequency=m.frequency??saved?.frequency??"custom";
- const weekdays=Array.isArray(m.weekdays)?m.weekdays:(Array.isArray(saved?.weekdays)?saved!.weekdays!:[]);
+ const nativeWeekdays=Array.isArray(m.weekdays)?m.weekdays:[];
+ const weekdays=nativeWeekdays.length?nativeWeekdays:(Array.isArray(saved?.weekdays)?saved!.weekdays!:[]);
  if(frequency==="daily") return true;
  if(frequency==="weekly"||frequency==="custom") return weekdays.includes(day);
  return false;
 }
 function timeLabel(m:MedicationRow){const saved=storedSchedule(m),tod=m.time_of_day??saved?.time_of_day;return tod&&T[tod]?T[tod]:(m.schedule&&!m.schedule.startsWith("S2|")?m.schedule:"No usual time");}
-function frequencyLabel(m:MedicationRow){const saved=storedSchedule(m),f=m.frequency??saved?.frequency;return f?f.replace("_"," "):(m.schedule&&!m.schedule.startsWith("S2|")?m.schedule:"Existing medication");}
+function frequencyLabel(m:MedicationRow){const saved=storedSchedule(m),f=m.frequency??saved?.frequency, nativeDays=Array.isArray(m.weekdays)?m.weekdays:[], days=nativeDays.length?nativeDays:(saved?.weekdays??[]);if(f==="weekly"&&days.length)return "Weekly · "+days.map(d=>D[d]).join(", ");if(f==="custom"&&days.length)return days.map(d=>D[d]).join(", ");return f?f.replace("_"," "):(m.schedule&&!m.schedule.startsWith("S2|")?m.schedule:"Existing medication");}
 export default function MedicationScreen({userId,medications,logs,onChanged}:{userId:string;medications:MedicationRow[];logs:MedicationLogRow[];onChanged:()=>Promise<void>}){
  const scrollRef=useRef<ScrollView>(null);
  const {theme}=useTheme(),C=theme.colors,n=new Date(); const [cal,setCal]=useState({y:n.getFullYear(),m:n.getMonth()}),[selected,setSelected]=useState(key(n.getFullYear(),n.getMonth(),n.getDate()));
  const [name,setName]=useState(""),[frequency,setFrequency]=useState<MedicationRow["frequency"]>("daily"),[tod,setTod]=useState<NonNullable<MedicationRow["time_of_day"]>>("morning"),[weekdays,setWeekdays]=useState<number[]>([]),[editing,setEditing]=useState<string|null>(null);
  const logsFor=(d:string)=>logs.filter(l=>(l.scheduled_date??l.taken_at.slice(0,10))===d), selectedMeds=medications.filter(m=>due(m,selected)||logsFor(selected).some(l=>l.medication_id===m.id));
  function resetForm(){setEditing(null);setName("");setFrequency("daily");setTod("morning");setWeekdays([]);}
- function edit(m:MedicationRow){const saved=storedSchedule(m);setEditing(m.id);setName(m.name);setFrequency(m.frequency??saved?.frequency??"daily");setTod((m.time_of_day??saved?.time_of_day??"morning") as NonNullable<MedicationRow["time_of_day"]>);setWeekdays(Array.isArray(m.weekdays)?m.weekdays:(saved?.weekdays??[]));requestAnimationFrame(()=>scrollRef.current?.scrollTo({y:0,animated:true}));}
+ function edit(m:MedicationRow){const saved=storedSchedule(m);setEditing(m.id);setName(m.name);setFrequency(m.frequency??saved?.frequency??"daily");setTod((m.time_of_day??saved?.time_of_day??"morning") as NonNullable<MedicationRow["time_of_day"]>);setWeekdays(Array.isArray(m.weekdays)&&m.weekdays.length?m.weekdays:(saved?.weekdays??[]));requestAnimationFrame(()=>scrollRef.current?.scrollTo({y:0,animated:true}));}
  async function add(){const input={name:name.trim(),frequency,time_of_day:tod,weekdays};if(editing)await updateMedication(editing,input);else await addMedication(userId,input);resetForm();await onChanged();}
  async function mark(m:MedicationRow,status:"taken"|"skipped"){await logMedication(userId,m.id,selected,status);await onChanged();}
  const chip=(on:boolean)=>({paddingVertical:8,paddingHorizontal:11,borderRadius:18,borderWidth:1,borderColor:C.brandPrimary,backgroundColor:on?C.accentSage:C.surface});
