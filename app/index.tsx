@@ -38,6 +38,7 @@ import {
   type CheckInRow,
   type JournalRow,
   type MedicationRow,
+  type MedicationLogRow,
   type Profile,
 } from "../src/api";
 import MyPatternsScreen from "../src/MyPatternsScreen";
@@ -58,15 +59,17 @@ import * as Notifications from "expo-notifications";
 import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
+import MedicationScreen from "../src/MedicationScreen";
 import { themes, type ThemeId, type ThemeTokens } from "../src/theme/tokens";
 import { useTheme } from "../src/theme/context";
 import { Button, Card, Field, Notice } from "../src/components";
 
-type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
+type Tab = "Home" | "Check-In" | "Cycle" | "Meds" | "Trends" | "Journal" | "Profile";
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
   ["Check-In", "heart-outline"],
   ["Cycle", "calendar-outline"],
+  ["Meds", "medical-outline"],
   ["Trends", "stats-chart-outline"],
   ["Journal", "book-outline"],
   ["Profile", "person-outline"],
@@ -990,6 +993,8 @@ export default function App() {
         reducedMotion={reducedMotion}
       />
     );
+  else if (tab === "Meds")
+    body = <MedicationScreen userId={session.user.id} medications={data.medications} logs={data.logs as MedicationLogRow[]} onChanged={refresh} />;
   else if (tab === "Check-In")
     body = (
       <CheckIn
