@@ -571,16 +571,22 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           </View>
 
           <View style={styles.card}>
-            <Text accessibilityRole="header" style={styles.heading}>Your starting cycle estimate</Text>
-            <Text style={styles.body}>Tell Symptom Story what is usual for you so predictions can begin right away. As you record more cycles, your own history becomes the stronger signal.</Text>
-            <Field label="Last period started" value={lastPeriodDraft} onChangeText={setLastPeriodDraft} placeholder="YYYY-MM-DD" />
-            <Field label="My cycle is usually (days)" value={cycleLengthDraft} onChangeText={setCycleLengthDraft} placeholder="e.g. 28" />
-            <Field label="My period usually lasts (days)" value={periodLengthDraft} onChangeText={setPeriodLengthDraft} placeholder="e.g. 5" />
-            <Button disabled={busy} label={busy ? "Saving..." : "Save cycle estimate"} onPress={saveCycleBaseline} />
-            {nextPeriod.estimatedDate && predictedPeriodEnd ? (
-              <Notice text={"Estimated next period: " + friendlyDate(nextPeriod.estimatedDate) + " – " + friendlyDate(predictedPeriodEnd) + ". This is an estimate based on " + (learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate ? "your recorded cycle history." : "the cycle length you entered.")} />
+            <Text accessibilityRole="header" style={styles.heading}>{settings?.typical_cycle_length && latestStart ? "Cycle prediction" : "Set up cycle predictions"}</Text>
+            {settings?.typical_cycle_length && latestStart ? (
+              <>
+                <Text style={styles.body}>Your starting information is saved. Keep logging actual period starts and S² will use your recorded cycle history as the stronger signal over time.</Text>
+                <Text style={styles.muted}>Starting baseline: {settings.typical_cycle_length}-day cycle{settings.typical_period_length ? " · " + settings.typical_period_length + "-day period" : ""} · latest recorded start {friendlyDate(latestStart)}</Text>
+                {nextPeriod.estimatedDate && predictedPeriodEnd && <Notice text={"Estimated next period: " + friendlyDate(nextPeriod.estimatedDate) + " – " + friendlyDate(predictedPeriodEnd) + ". This is an estimate based on " + (learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate ? "your recorded cycle history." : "your saved starting baseline.")} />}
+                <Button secondary label="Edit starting baseline" onPress={() => { setCycleLengthDraft(String(settings.typical_cycle_length ?? "")); setPeriodLengthDraft(String(settings.typical_period_length ?? "")); setLastPeriodDraft(latestStart ?? ""); }} />
+              </>
             ) : (
-              <Text style={styles.muted}>Add your last period start and usual cycle length to create a starting estimate.</Text>
+              <>
+                <Text style={styles.body}>Enter this once to create your starting estimate. S² saves it to your account; as you record more cycles, your own history becomes the stronger signal.</Text>
+                <Field label="Last period started" value={lastPeriodDraft} onChangeText={setLastPeriodDraft} placeholder="YYYY-MM-DD" />
+                <Field label="My cycle is usually (days)" value={cycleLengthDraft} onChangeText={setCycleLengthDraft} placeholder="e.g. 28" />
+                <Field label="My period usually lasts (days)" value={periodLengthDraft} onChangeText={setPeriodLengthDraft} placeholder="e.g. 5" />
+                <Button disabled={busy} label={busy ? "Saving..." : "Save starting baseline"} onPress={saveCycleBaseline} />
+              </>
             )}
           </View>
 
