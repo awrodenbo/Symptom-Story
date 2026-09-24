@@ -50,16 +50,15 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function fail(error: { message: string } | null) { if (error) throw new Error(error.message); }
 
 export async function loadDashboard(userId: string) {
-  const [profile, checkIns, medications, logs, journal, food] = await Promise.all([
+  const [profile, checkIns, medications, logs, journal] = await Promise.all([
     supabase.from('profiles').select('display_name,tracking_mode,onboarding_complete').eq('id', userId).maybeSingle(),
     supabase.from('check_ins').select('*').order('entry_date', { ascending: false }).limit(60),
     supabase.from('medications').select('*').order('created_at', { ascending: false }),
     supabase.from('medication_logs').select('*').order('taken_at', { ascending: false }).limit(60),
     supabase.from('journal_entries').select('*').order('created_at', { ascending: false }).limit(60),
-    supabase.from('food_entries').select('*').order('entry_date', { ascending: false }).limit(120),
   ]);
-  for (const response of [profile, checkIns, medications, logs, journal, food]) fail(response.error);
-  return { profile: profile.data as Profile | null, checkIns: checkIns.data as CheckInRow[], medications: medications.data as MedicationRow[], logs: logs.data as MedicationLogRow[], journal: journal.data as JournalRow[], food: food.data as FoodEntryRow[] };
+  for (const response of [profile, checkIns, medications, logs, journal]) fail(response.error);
+  return { profile: profile.data as Profile | null, checkIns: checkIns.data as CheckInRow[], medications: medications.data as MedicationRow[], logs: logs.data as MedicationLogRow[], journal: journal.data as JournalRow[], food: [] as FoodEntryRow[] };
 }
 
 export async function saveProfile(userId: string, profile: Omit<Profile, 'onboarding_complete'>) {
@@ -72,7 +71,17 @@ export async function saveCheckIn(userId: string, values: Omit<CheckInRow, 'id'|
 
 export async function deleteCheckIn(id: string) { const result = await supabase.from('check_ins').delete().eq('id', id); fail(result.error); }
 export type MedicationScheduleInput = { name: string; schedule?: string; frequency: MedicationRow['frequency']; time_of_day?: MedicationRow['time_of_day']; scheduled_time?: string | null; weekdays?: number[] };
-export async function addMedication(userId: string, input: MedicationScheduleInput) { const result = await supabase.from('medications').insert({ user_id: userId, name: input.name, schedule: input.schedule || null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] }).select().single(); fail(result.error); return result.data as MedicationRow; }
+function legacyMedicationSchedule(input: MedicationScheduleInput) {
+  return "S2|" + JSON.stringify({ frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] });
+}
+export async function addMedication(userId: string, input: MedicationScheduleInput) {
+  const payload = { user_id: userId, name: input.name, schedule: input.schedule || legacyMedicationSchedule(input), frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
+  let result = await supabase.from('medications').insert(payload).select().single();
+  if (result.error && /frequency|time_of_day|scheduled_time|weekdays|schema cache|column/i.test(result.error.message)) {
+    result = await supabase.from('medications').insert({ user_id: userId, name: input.name, schedule: legacyMedicationSchedule(input) }).select().single();
+  }
+  fail(result.error); return result.data as MedicationRow;
+}
 export async function updateMedication(id: string, input: MedicationScheduleInput) { const result = await supabase.from('medications').update({ name: input.name, schedule: input.schedule || null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] }).eq('id', id).select().single(); fail(result.error); return result.data as MedicationRow; }
 export async function deleteMedication(id: string) { const result = await supabase.from('medications').delete().eq('id', id); fail(result.error); }
 export async function logMedication(userId: string, medicationId: string, scheduledDate?: string, status: MedicationLogRow['status'] = 'taken', takenAt?: string) { const result = await supabase.from('medication_logs').insert({ user_id: userId, medication_id: medicationId, scheduled_date: scheduledDate ?? today(), status, ...(takenAt ? { taken_at: takenAt } : {}) }).select().single(); fail(result.error); return result.data as MedicationLogRow; }
