@@ -1,12 +1,14 @@
 import React from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 type FieldProps = {
   label: string;
 } & TextInputProps;
 
 export function Field({ label, style, ...props }: FieldProps) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -24,7 +26,7 @@ export function Field({ label, style, ...props }: FieldProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   field: {
     gap: 6,
   },
