@@ -570,9 +570,15 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
           <View style={styles.card}>
             <Text accessibilityRole="header" style={styles.heading}>Your starting cycle estimate</Text>
             <Text style={styles.body}>Tell Symptom Story what is usual for you so predictions can begin right away. As you record more cycles, your own history becomes the stronger signal.</Text>
+            <Field label="Last period started" value={lastPeriodDraft} onChangeText={setLastPeriodDraft} placeholder="YYYY-MM-DD" />
             <Field label="My cycle is usually (days)" value={cycleLengthDraft} onChangeText={setCycleLengthDraft} placeholder="e.g. 28" />
             <Field label="My period usually lasts (days)" value={periodLengthDraft} onChangeText={setPeriodLengthDraft} placeholder="e.g. 5" />
             <Button disabled={busy} label={busy ? "Saving..." : "Save cycle estimate"} onPress={saveCycleBaseline} />
+            {nextPeriod.estimatedDate && predictedPeriodEnd ? (
+              <Notice text={"Estimated next period: " + friendlyDate(nextPeriod.estimatedDate) + " – " + friendlyDate(predictedPeriodEnd) + ". This is an estimate based on " + (learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate ? "your recorded cycle history." : "the cycle length you entered.")} />
+            ) : (
+              <Text style={styles.muted}>Add your last period start and usual cycle length to create a starting estimate.</Text>
+            )}
           </View>
 
           <View style={styles.card}>
