@@ -85,7 +85,8 @@ export default function TodaysSupport({ checkIns, onCheckIn }: { checkIns: Check
 }
 
 function PressableButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Text accessibilityRole="button" onPress={onPress} style={styles.link}>{label}</Text>;
+  const { theme } = useTheme();
+  return <Text accessibilityRole="button" onPress={onPress} style={{ color: theme.colors.brandPrimary, fontSize: 14, fontWeight: "800", paddingVertical: 8 }}>{label}</Text>;
 }
 
 const createStyles = (theme: import("./theme/tokens").ThemeTokens) => {
