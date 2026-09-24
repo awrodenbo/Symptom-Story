@@ -50,15 +50,16 @@ function today() { return new Date().toISOString().slice(0, 10); }
 function fail(error: { message: string } | null) { if (error) throw new Error(error.message); }
 
 export async function loadDashboard(userId: string) {
-  const [profile, checkIns, medications, logs, journal] = await Promise.all([
+  const [profile, checkIns, medications, logs, journal, food] = await Promise.all([
     supabase.from('profiles').select('display_name,tracking_mode,onboarding_complete').eq('id', userId).maybeSingle(),
     supabase.from('check_ins').select('*').order('entry_date', { ascending: false }).limit(60),
     supabase.from('medications').select('*').order('created_at', { ascending: false }),
     supabase.from('medication_logs').select('*').order('taken_at', { ascending: false }).limit(60),
     supabase.from('journal_entries').select('*').order('created_at', { ascending: false }).limit(60),
+    supabase.from('food_entries').select('*').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(60),
   ]);
-  for (const response of [profile, checkIns, medications, logs, journal]) fail(response.error);
-  return { profile: profile.data as Profile | null, checkIns: checkIns.data as CheckInRow[], medications: medications.data as MedicationRow[], logs: logs.data as MedicationLogRow[], journal: journal.data as JournalRow[], food: [] as FoodEntryRow[] };
+  for (const response of [profile, checkIns, medications, logs, journal, food]) fail(response.error);
+  return { profile: profile.data as Profile | null, checkIns: checkIns.data as CheckInRow[], medications: medications.data as MedicationRow[], logs: logs.data as MedicationLogRow[], journal: journal.data as JournalRow[], food: food.data as FoodEntryRow[] };
 }
 
 export async function saveProfile(userId: string, profile: Omit<Profile, 'onboarding_complete'>) {
