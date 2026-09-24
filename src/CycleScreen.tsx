@@ -159,6 +159,16 @@ function calendarDifference(start: string, end: string): number {
   return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
 }
 
+function addCalendarDays(date: string, days: number): string {
+  const next = new Date(`${date}T00:00:00Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+function friendlyDate(date: string): string {
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+}
+
 function friendlyFlow(level: CycleFlowLevel | null): string {
   return level?.replace("_", " ") ?? "";
 }
@@ -195,6 +205,9 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [calendarTarget, setCalendarTarget] = useState<"cycle" | "intimacy" | null>(null);
   const [calendarMonth, setCalendarMonth] = useState(monthKey(localDate()));
   const [pendingDelete, setPendingDelete] = useState<CycleEventRow | null>(null);
+  const [viewMonth, setViewMonth] = useState(monthKey(localDate()));
+  const [selectedDay, setSelectedDay] = useState(localDate());
+  const [cycleLengthDraft, setCycleLengthDraft] = useState("");
 
   async function load() {
     setLoading(true);
@@ -206,6 +219,7 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
       setPlan(nextPlan);
       setBirthControl(nextBirthControl);
       setIntimacyEvents(nextIntimacy);
+      setCycleLengthDraft(nextSettings?.typical_cycle_length_days ? String(nextSettings.typical_cycle_length_days) : "");
       if (nextBirthControl) {
         setBirthControlMethod(nextBirthControl.method);
         setBirthControlNote(nextBirthControl.note ?? "");
@@ -265,8 +279,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   function resetEditor() {
     setEditing(null);
     setEventType("period_start");
-    setEventDate(localDate());
-    setOccurredAt(localTimestamp());
+    setEventDate((current) => current || localDate());
+    setOccurredAt((current) => timestampForDate(current?.slice(0, 10) || localDate(), current || localTimestamp()));
     setFlowLevel(null);
   }
 
@@ -300,8 +314,6 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   function beginNew(type: CycleEventType, level: CycleFlowLevel | null = null) {
     setEditing(null);
     setEventType(type);
-    setEventDate(localDate());
-    setOccurredAt(localTimestamp());
     setFlowLevel(level);
     if (!reducedMotion) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   }
@@ -385,6 +397,28 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     }
   }
 
+  async function saveTypicalCycleLength() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const trimmed = cycleLengthDraft.trim();
+      const value = trimmed ? Number(trimmed) : null;
+      if (value !== null && (!Number.isInteger(value) || value < 15 || value > 180)) {
+        setError("Enter a typical cycle length from 15 to 180 days, or leave it blank if you don't know.");
+        return;
+      }
+      const next = await updateCycleSettings({ typical_cycle_length_days: value });
+      setSettings(next);
+      setCycleLengthDraft(value ? String(value) : "");
+      setMessage(value ? "Typical cycle length saved. Initial estimates can now use it." : "Typical cycle length cleared.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save typical cycle length.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveBirthControl() {
     setBusy(true);
     setError("");
@@ -442,6 +476,14 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const history = calculateCycleHistory(domainEvents);
   const nextPeriod = estimateNextPeriod(domainEvents);
   const phase = estimateCyclePhase(domainEvents, localDate());
+  const recordedStarts = events.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort();
+  const latestRecordedStart = recordedStarts.at(-1) ?? null;
+  const userCycleLength = settings?.typical_cycle_length_days ?? null;
+  const bootstrapNextPeriod = nextPeriod.status === "insufficient-history" && latestRecordedStart && userCycleLength
+    ? addCalendarDays(latestRecordedStart, userCycleLength)
+    : null;
+  const effectiveNextPeriodDate = nextPeriod.estimatedDate ?? bootstrapNextPeriod;
+  const estimateSource = nextPeriod.estimatedDate ? "recorded history" : bootstrapNextPeriod ? "the cycle length you provided" : null;
   const grouped = events.reduce<Record<string, CycleEventRow[]>>((groups, event) => {
     (groups[event.event_date] ??= []).push(event);
     return groups;
@@ -449,10 +491,10 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const dates = Object.keys(grouped).sort((left, right) => right.localeCompare(left));
   const trackingEnabled = settings?.tracking_enabled ?? false;
   const reminderDays = settings?.reminder_days_before ?? 7;
-  const daysUntilPeriod = nextPeriod.estimatedDate
-    ? calendarDifference(localDate(), nextPeriod.estimatedDate)
+  const daysUntilPeriod = effectiveNextPeriodDate
+    ? calendarDifference(localDate(), effectiveNextPeriodDate)
     : null;
-  const supportWindowActive = nextPeriod.isEstimate && daysUntilPeriod !== null
+  const supportWindowActive = Boolean(effectiveNextPeriodDate) && daysUntilPeriod !== null
     && daysUntilPeriod >= 0 && daysUntilPeriod <= reminderDays;
   const currentlyBleeding = events.some((event) => event.event_type === "period_start" && event.event_date <= localDate())
     && !events.some((event) => event.event_type === "period_end" && event.event_date >= (events.filter((item) => item.event_type === "period_start" && item.event_date <= localDate()).at(-1)?.event_date ?? localDate()));
@@ -496,6 +538,9 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
 
   const selectedCalendarDate = calendarTarget === "cycle" ? eventDate : intimacyDate;
   const calendarCells = calendarDays(calendarMonth);
+  const monthCells = calendarDays(viewMonth);
+  const selectedDayEvents = grouped[selectedDay] ?? [];
+  const selectedDayIntimacy = settings?.intimacy_tracking_enabled ? intimacyEvents.filter((event) => event.event_date === selectedDay) : [];
 
   return (
     <>
@@ -522,15 +567,64 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                 ? `Cycle day ${phase.cycleDay}. This phase is an estimate based on recorded history.`
                 : "There is not enough recorded history to estimate today's phase."}
             </Text>
-            {nextPeriod.status === "insufficient-history" ? (
-              <Text style={styles.muted}>Next period: not enough history yet.</Text>
-            ) : (
+            {effectiveNextPeriodDate ? (
               <Text style={styles.muted}>
-                Next period: {nextPeriod.estimatedRange ? `${nextPeriod.estimatedRange.start} to ${nextPeriod.estimatedRange.end}` : nextPeriod.estimatedDate}
-                {nextPeriod.status === "limited-history" ? " · limited history" : nextPeriod.status === "highly-variable" ? " · highly variable history" : " · estimated"}
+                Next period estimate: {nextPeriod.estimatedRange ? `${nextPeriod.estimatedRange.start} to ${nextPeriod.estimatedRange.end}` : friendlyDate(effectiveNextPeriodDate)}
+                {estimateSource ? ` · based on ${estimateSource}` : ""}
               </Text>
+            ) : (
+              <Text style={styles.muted}>Next period: add a period start and your typical cycle length, or keep recording cycles so Symptom Story can learn your history.</Text>
             )}
             <Button secondary label="Open today's Check-In" onPress={onCheckIn} />
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Your cycle calendar</Text>
+            <Text style={styles.muted}>Recorded days are solid. Estimated period timing is outlined so it never looks like something you logged.</Text>
+            <View style={styles.calendarHeader}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setViewMonth((month) => shiftMonth(month, -1))} style={styles.iconButton}><Ionicons name="chevron-back" size={22} color={C.moss} /></Pressable>
+              <Text accessibilityRole="header" style={styles.calendarTitle}>{monthLabel(viewMonth)}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setViewMonth((month) => shiftMonth(month, 1))} style={styles.iconButton}><Ionicons name="chevron-forward" size={22} color={C.moss} /></Pressable>
+            </View>
+            <View style={styles.calendarGrid}>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <Text key={day} style={styles.weekday}>{day.slice(0, 1)}</Text>)}
+              {monthCells.map((cell, index) => {
+                if (!cell) return <View key={`month-blank-${index}`} style={styles.monthDay} />;
+                const dayEvents = grouped[cell.date] ?? [];
+                const hasPeriod = dayEvents.some((event) => event.event_type === "period_start" || event.event_type === "period_end" || event.event_type === "flow");
+                const hasSpotting = dayEvents.some((event) => event.event_type === "spotting");
+                const hasIntimacy = settings?.intimacy_tracking_enabled && intimacyEvents.some((event) => event.event_date === cell.date);
+                const predicted = effectiveNextPeriodDate === cell.date;
+                const selected = selectedDay === cell.date;
+                return (
+                  <Pressable key={cell.date} accessibilityRole="button" accessibilityLabel={`${cell.date}${hasPeriod ? ", period record" : ""}${hasSpotting ? ", spotting" : ""}${hasIntimacy ? ", intimacy recorded" : ""}${predicted ? ", estimated next period" : ""}`} accessibilityState={{ selected }} onPress={() => { setSelectedDay(cell.date); setEventDate(cell.date); setOccurredAt(timestampForDate(cell.date, occurredAt)); }} style={[styles.monthDay, selected && styles.monthDaySelected, predicted && styles.monthDayPredicted, hasPeriod && styles.monthDayPeriod]}>
+                    <Text style={[styles.calendarDayText, hasPeriod && styles.monthDayPeriodText]}>{cell.day}</Text>
+                    <View style={styles.dayMarkers}>
+                      {hasSpotting && <View style={styles.spotMarker} />}
+                      {hasIntimacy && <Ionicons name="heart" size={10} color={C.moss} />}
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.legendRow}>
+              <Text style={styles.legendText}>● recorded period/flow</Text>
+              <Text style={styles.legendText}>○ estimated period</Text>
+              <Text style={styles.legendText}>• spotting</Text>
+              {settings?.intimacy_tracking_enabled && <Text style={styles.legendText}>♥ intimacy</Text>}
+            </View>
+            <Text style={styles.editorTitle}>{friendlyDate(selectedDay)}</Text>
+            {!selectedDayEvents.length && !selectedDayIntimacy.length ? <Text style={styles.muted}>Nothing recorded for this day yet. Quick log below will use this date.</Text> : null}
+            {selectedDayEvents.map((event) => <Text key={event.id} style={styles.body}>{eventLabels[event.event_type]}{event.flow_level ? ` · ${friendlyFlow(event.flow_level)}` : ""}</Text>)}
+            {selectedDayIntimacy.map((event) => <Text key={event.id} style={styles.body}>♥ Intimacy recorded</Text>)}
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Your usual cycle</Text>
+            <Text style={styles.body}>If you know your typical cycle length, Symptom Story can make an initial period estimate while it learns from your recorded history.</Text>
+            <Field label="Typical cycle length in days (optional)" value={cycleLengthDraft} onChangeText={setCycleLengthDraft} placeholder="For example, 34" />
+            <Text style={styles.muted}>Long and variable cycles are valid. Leave this blank if you don't know or your cycles vary too much. Recorded history takes priority once enough is available.</Text>
+            <Button disabled={busy} label={busy ? "Saving..." : "Save cycle length"} onPress={saveTypicalCycleLength} />
           </View>
 
           <View style={styles.card}>
@@ -662,10 +756,16 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
             <Text accessibilityRole="header" style={styles.heading}>Quick log</Text>
             <Text style={styles.muted}>You can add more than one flow observation on the same date.</Text>
             <View style={styles.buttonGrid}>
-              <Button label="Start period" onPress={() => beginNew("period_start")} />
-              <Button secondary label="End period" onPress={() => beginNew("period_end")} />
-              <Button secondary label="Spotting" onPress={() => beginNew("spotting")} />
-              <Button secondary label="Log flow" onPress={() => beginNew("flow", "light")} />
+              {([
+                ["period_start", "Start period"],
+                ["period_end", "End period"],
+                ["spotting", "Spotting"],
+                ["flow", "Log flow"],
+              ] as [CycleEventType, string][]).map(([type, label]) => (
+                <Pressable key={type} accessibilityRole="radio" accessibilityState={{ checked: eventType === type }} onPress={() => beginNew(type, type === "flow" ? (flowLevel ?? "light") : null)} style={[styles.eventTypeButton, eventType === type && styles.eventTypeButtonSelected]}>
+                  <Text style={[styles.eventTypeButtonText, eventType === type && styles.eventTypeButtonTextSelected]}>{label}</Text>
+                </Pressable>
+              ))}
             </View>
             {eventType === "flow" && (
               <View style={styles.field}>
@@ -773,6 +873,10 @@ const styles = StyleSheet.create({
   muted: { fontSize: 13, lineHeight: 19, color: C.muted },
   card: { backgroundColor: C.white, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 17, gap: 13 },
   buttonGrid: { gap: 9 },
+  eventTypeButton: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: C.moss, backgroundColor: C.white, paddingHorizontal: 15, alignItems: "center", justifyContent: "center" },
+  eventTypeButtonSelected: { backgroundColor: C.moss },
+  eventTypeButtonText: { fontSize: 14, fontWeight: "800", color: C.moss, textAlign: "center" },
+  eventTypeButtonTextSelected: { color: C.white },
   button: { minHeight: 48, borderRadius: 14, backgroundColor: C.moss, paddingHorizontal: 15, flexGrow: 1, alignItems: "center", justifyContent: "center" },
   buttonSecondary: { backgroundColor: C.white, borderWidth: 1, borderColor: C.moss },
   buttonPressed: { opacity: 0.82 },
@@ -822,6 +926,15 @@ const styles = StyleSheet.create({
   calendarDaySelected: { backgroundColor: C.moss },
   calendarDayText: { fontSize: 14, color: C.ink },
   calendarDayTextSelected: { color: C.white, fontWeight: "800" },
+  monthDay: { width: "14.2857%", minHeight: 50, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: "transparent", gap: 2 },
+  monthDaySelected: { borderColor: C.moss },
+  monthDayPredicted: { borderColor: C.moss, borderStyle: "dashed" },
+  monthDayPeriod: { backgroundColor: C.moss },
+  monthDayPeriodText: { color: C.white, fontWeight: "800" },
+  dayMarkers: { minHeight: 11, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3 },
+  spotMarker: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.danger },
+  legendRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  legendText: { fontSize: 11, lineHeight: 16, color: C.muted },
   deleteButton: { minHeight: 48, borderRadius: 14, backgroundColor: C.danger, paddingHorizontal: 15, flexGrow: 1, alignItems: "center", justifyContent: "center" },
   deleteButtonText: { fontSize: 14, fontWeight: "800", color: C.white, textAlign: "center" },
 });
