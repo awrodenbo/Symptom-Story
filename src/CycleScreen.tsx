@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -53,19 +53,8 @@ import {
   reconcilePrePeriodNotification,
   requestNotificationPermission,
 } from "./notifications";
-import { theme } from "./theme/tokens";
+import { useTheme } from "./theme/context";
 import { Button, Card, Field, Notice, ToggleRow, Chip } from "./components";
-
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  cream: theme.colors.background,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
 
 const eventLabels: Record<CycleEventType, string> = {
   period_start: "Start period",
@@ -122,6 +111,56 @@ function calendarDifference(start: string, end: string): number {
   return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
 }
 
+function addCalendarDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function dateFallsWithin(date: string, start: string, end: string): boolean {
+  return date >= start && date <= end;
+}
+
+function recordedPeriodDates(events: CycleEventRow[]): Set<string> {
+  const dates = new Set<string>();
+  const ordered = events
+    .filter((event) => event.event_type === "period_start" || event.event_type === "period_end")
+    .slice()
+    .sort((left, right) => left.event_date.localeCompare(right.event_date));
+  let openStart: string | null = null;
+  for (const event of ordered) {
+    if (event.event_type === "period_start") {
+      openStart = event.event_date;
+      dates.add(event.event_date);
+      continue;
+    }
+    if (openStart && event.event_date >= openStart) {
+      let cursor = openStart;
+      while (cursor <= event.event_date) {
+        dates.add(cursor);
+        cursor = addCalendarDays(cursor, 1);
+      }
+      openStart = null;
+    } else {
+      dates.add(event.event_date);
+    }
+  }
+  if (openStart) dates.add(openStart);
+  events
+    .filter((event) => event.event_type === "flow")
+    .forEach((event) => dates.add(event.event_date));
+  return dates;
+}
+
+function friendlyDate(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function monthLabel(year: number, month: number): string {
+  return new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
 function friendlyFlow(level: CycleFlowLevel | null): string {
   return level?.replace("_", " ") ?? "";
 }
@@ -131,6 +170,9 @@ function eventInput(type: CycleEventType, eventDate: string, occurredAt: string,
 }
 
 export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onCheckIn: () => void; reducedMotion: boolean; checkIn?: CheckInRow }) {
+  const { theme } = useTheme();
+  const C = React.useMemo(() => ({ ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger }), [theme]);
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const [settings, setSettings] = useState<CycleSettingsRow | null>(null);
   const [birthControl, setBirthControl] = useState<BirthControlProfileRow | null>(null);
   const [intimacyEvents, setIntimacyEvents] = useState<IntimacyEventRow[]>([]);
@@ -155,6 +197,12 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const [intimacyTimestamp, setIntimacyTimestamp] = useState(localTimestamp);
   const [spermPresent, setSpermPresent] = useState<SpermPresence | null>(null);
   const [intimacyNote, setIntimacyNote] = useState("");
+  const [lastPeriodDraft, setLastPeriodDraft] = useState("");
+  const [cycleLengthDraft, setCycleLengthDraft] = useState("");
+  const [periodLengthDraft, setPeriodLengthDraft] = useState("");
+  const todayParts = localDate().split("-").map(Number);
+  const [calendarMonth, setCalendarMonth] = useState({ year: todayParts[0], month: todayParts[1] - 1 });
+  const [selectedCycleDate, setSelectedCycleDate] = useState(localDate);
 
   async function load() {
     setLoading(true);
@@ -166,6 +214,10 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
       setPlan(nextPlan);
       setBirthControl(nextBirthControl);
       setIntimacyEvents(nextIntimacy);
+      const latestRecordedStart = nextEvents.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort().at(-1) ?? "";
+      setLastPeriodDraft(latestRecordedStart);
+      setCycleLengthDraft(nextSettings?.typical_cycle_length ? String(nextSettings.typical_cycle_length) : "");
+      setPeriodLengthDraft(nextSettings?.typical_period_length ? String(nextSettings.typical_period_length) : "");
       if (nextBirthControl) {
         setBirthControlMethod(nextBirthControl.method);
         setBirthControlNote(nextBirthControl.note ?? "");
@@ -325,6 +377,40 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
     }
   }
 
+  async function saveCycleBaseline() {
+    const lastPeriod = lastPeriodDraft.trim();
+    const cycleLength = Number(cycleLengthDraft);
+    const periodLength = Number(periodLengthDraft);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lastPeriod) || Number.isNaN(Date.parse(lastPeriod + "T00:00:00"))) {
+      setError("Enter the first day of your last period as YYYY-MM-DD.");
+      return;
+    }
+    if (!Number.isInteger(cycleLength) || cycleLength < 15 || cycleLength > 90) {
+      setError("Enter your usual cycle length between 15 and 90 days.");
+      return;
+    }
+    if (!Number.isInteger(periodLength) || periodLength < 1 || periodLength > 20) {
+      setError("Enter your usual period length between 1 and 20 days.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const next = await updateCycleSettings({ typical_cycle_length: cycleLength, typical_period_length: periodLength });
+      const hasStart = events.some((event) => event.event_type === "period_start" && event.event_date === lastPeriod);
+      if (!hasStart) {
+        await createCycleEvent({ event_type: "period_start", event_date: lastPeriod, occurred_at: lastPeriod + "T12:00:00", flow_level: null });
+      }
+      setSettings(next);
+      await load();
+      setMessage("Your starting cycle estimate was saved.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Unable to save cycle estimate.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveBirthControl() {
     setBusy(true);
     setError("");
@@ -380,7 +466,23 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
 
   const domainEvents: CycleEvent[] = events;
   const history = calculateCycleHistory(domainEvents);
-  const nextPeriod = estimateNextPeriod(domainEvents);
+  const learnedNextPeriod = estimateNextPeriod(domainEvents);
+  const latestStart = events.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort().at(-1) ?? null;
+  const baselineCycleLength = settings?.typical_cycle_length ?? (Number.isInteger(Number(cycleLengthDraft)) && Number(cycleLengthDraft) >= 15 && Number(cycleLengthDraft) <= 90 ? Number(cycleLengthDraft) : null);
+  const baselinePeriodLength = settings?.typical_period_length ?? (Number.isInteger(Number(periodLengthDraft)) && Number(periodLengthDraft) >= 1 && Number(periodLengthDraft) <= 20 ? Number(periodLengthDraft) : 5);
+  const baselineStart = latestStart ?? (/^\d{4}-\d{2}-\d{2}$/.test(lastPeriodDraft.trim()) ? lastPeriodDraft.trim() : null);
+  const baselineNextDate = baselineStart && baselineCycleLength
+    ? addCalendarDays(baselineStart, baselineCycleLength)
+    : null;
+  const nextPeriod = learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate
+    ? learnedNextPeriod
+    : baselineNextDate
+      ? { ...learnedNextPeriod, status: "limited-history" as const, estimatedDate: baselineNextDate, estimatedRange: null, isEstimate: true }
+      : learnedNextPeriod;
+  const recordedPeriodDays = recordedPeriodDates(events);
+  const predictedPeriodEnd = nextPeriod.estimatedDate
+    ? addCalendarDays(nextPeriod.estimatedDate, Math.max(1, baselinePeriodLength) - 1)
+    : null;
   const phase = estimateCyclePhase(domainEvents, localDate());
   const grouped = events.reduce<Record<string, CycleEventRow[]>>((groups, event) => {
     (groups[event.event_date] ??= []).push(event);
@@ -467,6 +569,58 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
               </Text>
             )}
             <Button secondary label="Open today's Check-In" onPress={onCheckIn} />
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>{settings?.typical_cycle_length && latestStart ? "Cycle prediction" : "Set up cycle predictions"}</Text>
+            {settings?.typical_cycle_length && latestStart ? (
+              <>
+                <Text style={styles.body}>Your starting information is saved. Keep logging actual period starts and S² will use your recorded cycle history as the stronger signal over time.</Text>
+                <Text style={styles.muted}>Starting baseline: {settings.typical_cycle_length}-day cycle{settings.typical_period_length ? " · " + settings.typical_period_length + "-day period" : ""} · latest recorded start {friendlyDate(latestStart)}</Text>
+                {nextPeriod.estimatedDate && predictedPeriodEnd && <Notice text={"Estimated next period: " + friendlyDate(nextPeriod.estimatedDate) + " – " + friendlyDate(predictedPeriodEnd) + ". This is an estimate based on " + (learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate ? "your recorded cycle history." : "your saved starting baseline.")} />}
+                <Button secondary label="Edit starting baseline" onPress={() => { setCycleLengthDraft(String(settings.typical_cycle_length ?? "")); setPeriodLengthDraft(String(settings.typical_period_length ?? "")); setLastPeriodDraft(latestStart ?? ""); }} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.body}>Enter this once to create your starting estimate. S² saves it to your account; as you record more cycles, your own history becomes the stronger signal.</Text>
+                <Field label="Last period started" value={lastPeriodDraft} onChangeText={setLastPeriodDraft} placeholder="YYYY-MM-DD" />
+                <Field label="My cycle is usually (days)" value={cycleLengthDraft} onChangeText={setCycleLengthDraft} placeholder="e.g. 28" />
+                <Field label="My period usually lasts (days)" value={periodLengthDraft} onChangeText={setPeriodLengthDraft} placeholder="e.g. 5" />
+                <Button disabled={busy} label={busy ? "Saving..." : "Save starting baseline"} onPress={saveCycleBaseline} />
+              </>
+            )}
+          </View>
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.heading}>Calendar</Text>
+            <View style={styles.calendarHeader}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })} style={styles.iconButton}><Ionicons name="chevron-back" size={22} color={C.moss} /></Pressable>
+              <Text style={styles.calendarTitle}>{monthLabel(calendarMonth.year, calendarMonth.month)}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })} style={styles.iconButton}><Ionicons name="chevron-forward" size={22} color={C.moss} /></Pressable>
+            </View>
+            <View style={styles.calendarGrid}>
+              {["S","M","T","W","T","F","S"].map((day, index) => <Text key={`${day}-${index}`} style={styles.weekday}>{day}</Text>)}
+              {Array.from({ length: new Date(calendarMonth.year, calendarMonth.month, 1).getDay() }).map((_, index) => <View key={`blank-${index}`} style={styles.calendarDay} />)}
+              {Array.from({ length: new Date(calendarMonth.year, calendarMonth.month + 1, 0).getDate() }).map((_, index) => {
+                const day = index + 1;
+                const date = [calendarMonth.year, String(calendarMonth.month + 1).padStart(2, "0"), String(day).padStart(2, "0")].join("-");
+                const recorded = grouped[date] ?? [];
+                const hasPeriod = recordedPeriodDays.has(date);
+                const predicted = Boolean(nextPeriod.estimatedDate && predictedPeriodEnd && dateFallsWithin(date, nextPeriod.estimatedDate, predictedPeriodEnd));
+                const isToday = date === localDate();
+                return <Pressable key={date} accessibilityRole="button" accessibilityLabel={friendlyDate(date)} onPress={() => { setSelectedCycleDate(date); setEventDate(date); setOccurredAt(`${date}${localTimestamp().slice(10)}`); }} style={[styles.calendarDay, hasPeriod && styles.calendarPeriod, predicted && !hasPeriod && styles.calendarPredicted, isToday && styles.calendarToday, selectedCycleDate === date && { borderWidth: 2, borderColor: C.moss }]}>
+                  <Text style={[styles.calendarDayText, hasPeriod && styles.calendarPeriodText]}>{day}</Text>
+                  {recorded.length > 0 && <View style={styles.calendarDot} />}
+                </Pressable>;
+              })}
+            </View>
+            <View style={styles.legend}><View style={[styles.legendSwatch, styles.calendarPeriod]} /><Text style={styles.muted}>Recorded</Text><View style={[styles.legendSwatch, styles.calendarPredicted]} /><Text style={styles.muted}>Predicted</Text></View>
+            <View style={{ marginTop: 12, gap: 6 }}>
+              <Text style={styles.heading}>{friendlyDate(selectedCycleDate)}</Text>
+              {(grouped[selectedCycleDate] ?? []).length === 0 ? <Text style={styles.muted}>No cycle events recorded for this day.</Text> : (grouped[selectedCycleDate] ?? []).map((event) => <Pressable key={event.id} onPress={() => beginEdit(event)}><Text style={styles.body}>{eventLabels[event.event_type]}{event.flow_level ? " · " + friendlyFlow(event.flow_level) : ""} · tap to edit</Text></Pressable>)}
+              {recordedPeriodDays.has(selectedCycleDate) && <Text style={styles.muted}>This day falls within a recorded period.</Text>}
+              {nextPeriod.estimatedDate && predictedPeriodEnd && dateFallsWithin(selectedCycleDate, nextPeriod.estimatedDate, predictedPeriodEnd) && !recordedPeriodDays.has(selectedCycleDate) && <Text style={styles.muted}>This day falls within the estimated next period window.</Text>}
+            </View>
           </View>
 
           <View style={styles.card}>
@@ -595,10 +749,10 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
             <Text accessibilityRole="header" style={styles.heading}>Quick log</Text>
             <Text style={styles.muted}>You can add more than one flow observation on the same date.</Text>
             <View style={styles.buttonGrid}>
-              <Button label="Start period" onPress={() => beginNew("period_start")} />
-              <Button secondary label="End period" onPress={() => beginNew("period_end")} />
-              <Button secondary label="Spotting" onPress={() => beginNew("spotting")} />
-              <Button secondary label="Log flow" onPress={() => beginNew("flow", "light")} />
+              <Button secondary={eventType !== "period_start"} label="Start period" onPress={() => beginNew("period_start")} />
+              <Button secondary={eventType !== "period_end"} label="End period" onPress={() => beginNew("period_end")} />
+              <Button secondary={eventType !== "spotting"} label="Spotting" onPress={() => beginNew("spotting")} />
+              <Button secondary={eventType !== "flow"} label="Log flow" onPress={() => beginNew("flow", "light")} />
             </View>
             {eventType === "flow" && (
               <View style={styles.field}>
@@ -615,8 +769,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
             {(editing || eventType !== "period_start" || eventDate !== localDate()) && (
               <Text style={styles.editorTitle}>{editing ? `Editing ${eventLabels[eventType]}` : `New ${eventLabels[eventType]}`}</Text>
             )}
-            <Field label="Local calendar date (YYYY-MM-DD)" value={eventDate} onChangeText={setEventDate} />
-            <Field label="Local date and time" value={occurredAt} onChangeText={setOccurredAt} placeholder="YYYY-MM-DDTHH:MM:SS-04:00" />
+            <Field label="Date (YYYY-MM-DD)" value={eventDate} onChangeText={(value) => { setEventDate(value); if (/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) setOccurredAt(`${value}${localTimestamp().slice(10)}`); }} />
+            <Text style={styles.muted}>Symptom Story records the day, not a time of day, for period events.</Text>
             <View style={styles.row}>
               <Button disabled={busy} label={busy ? "Saving..." : editing ? "Save changes" : "Save event"} onPress={saveEvent} />
               {editing && <Button secondary label="Cancel" onPress={resetEditor} />}
@@ -635,12 +789,12 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
               <View style={styles.card}><Text style={styles.body}>No cycle events yet. Start with a quick log above.</Text></View>
             ) : dates.map((date) => (
               <View key={date} style={styles.historyGroup}>
-                <Text accessibilityRole="header" style={styles.dateHeading}>{date}</Text>
+                <Text accessibilityRole="header" style={styles.dateHeading}>{friendlyDate(date)}</Text>
                 {grouped[date].map((event) => (
                   <View key={event.id} style={styles.eventRow}>
                     <View style={styles.eventCopy}>
                       <Text style={styles.eventName}>{eventLabels[event.event_type]}{event.flow_level ? ` · ${friendlyFlow(event.flow_level)}` : ""}</Text>
-                      <Text style={styles.muted}>{timeFromTimestamp(event.occurred_at)} · recorded date {event.event_date}</Text>
+                      <Text style={styles.muted}>{friendlyDate(event.event_date)}</Text>
                     </View>
                     <View style={styles.eventActions}>
                       <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${eventLabels[event.event_type]} on ${event.event_date}`} hitSlop={6} onPress={() => beginEdit(event)} style={styles.iconButton}><Ionicons name="create-outline" size={20} color={C.moss} /></Pressable>
@@ -658,7 +812,9 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import("./theme/tokens").ThemeTokens) => {
+  const C = { ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger };
+  return StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 32, gap: 14 },
   center: { flex: 1, padding: 24, alignItems: "center", justifyContent: "center", gap: 16 },
   kicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, color: C.moss },
@@ -707,4 +863,18 @@ const styles = StyleSheet.create({
   supportRow: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 10, gap: 3 },
   supportCategory: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: C.moss },
   supportTitle: { fontSize: 15, lineHeight: 20, fontWeight: "700", color: C.ink },
-});
+  calendarHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  calendarTitle: { fontSize: 17, fontWeight: "800", color: C.ink },
+  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
+  weekday: { width: "14.2857%", textAlign: "center", fontSize: 11, fontWeight: "800", color: C.muted, paddingVertical: 6 },
+  calendarDay: { width: "14.2857%", aspectRatio: 1, alignItems: "center", justifyContent: "center", borderRadius: 999, position: "relative" },
+  calendarDayText: { fontSize: 13, fontWeight: "600", color: C.ink },
+  calendarPeriod: { backgroundColor: C.moss },
+  calendarPeriodText: { color: C.white, fontWeight: "800" },
+  calendarPredicted: { backgroundColor: C.sage, borderWidth: 1, borderColor: C.moss },
+  calendarToday: { borderWidth: 2, borderColor: C.ink },
+  calendarDot: { position: "absolute", bottom: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: C.white },
+  legend: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" },
+  legendSwatch: { width: 16, height: 16, borderRadius: 8 },
+  });
+};

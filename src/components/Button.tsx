@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 type ButtonProps = {
   label: string;
@@ -24,6 +24,8 @@ export function Button({
   accessibilityLabel,
   style,
 }: ButtonProps) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const iconColor = danger
     ? theme.colors.danger
     : secondary
@@ -62,7 +64,7 @@ export function Button({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   button: {
     minHeight: theme.touchTarget.minHeight,
     minWidth: theme.touchTarget.minWidth,

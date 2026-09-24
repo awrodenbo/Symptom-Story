@@ -8,6 +8,8 @@ export type CycleSettingsRow = {
   ttc_features_enabled: boolean;
   reminder_enabled: boolean;
   reminder_days_before: number;
+  typical_cycle_length: number | null;
+  typical_period_length: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -29,7 +31,7 @@ export type CycleEventInput = {
 
 export type CycleSettingsUpdate = Partial<Pick<
   CycleSettingsRow,
-  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'ttc_features_enabled' | 'reminder_enabled' | 'reminder_days_before'
+  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'ttc_features_enabled' | 'reminder_enabled' | 'reminder_days_before' | 'typical_cycle_length' | 'typical_period_length'
 >>;
 
 export type BirthControlMethod = 'pill' | 'iud' | 'implant' | 'injection' | 'ring' | 'patch' | 'barrier' | 'fertility_awareness' | 'other' | 'prefer_not_to_specify';
@@ -122,7 +124,7 @@ async function authenticatedUserId(client: CycleDataClient): Promise<string> {
 }
 
 function validateCycleSettingsUpdate(values: CycleSettingsUpdate) {
-  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled', 'reminder_days_before'];
+  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled', 'reminder_days_before', 'typical_cycle_length', 'typical_period_length'];
   for (const key of Object.keys(values)) {
     if (!supported.includes(key)) throw new Error(`Unsupported cycle setting: ${key}`);
   }
@@ -132,6 +134,12 @@ function validateCycleSettingsUpdate(values: CycleSettingsUpdate) {
   const reminderDays = values.reminder_days_before;
   if (reminderDays !== undefined && (!Number.isInteger(reminderDays) || reminderDays < 1 || reminderDays > 14))
     throw new Error('reminder_days_before must be an integer between 1 and 14.');
+  const cycleLength = values.typical_cycle_length;
+  if (cycleLength !== undefined && cycleLength !== null && (!Number.isInteger(cycleLength) || cycleLength < 15 || cycleLength > 90))
+    throw new Error('typical_cycle_length must be an integer between 15 and 90.');
+  const periodLength = values.typical_period_length;
+  if (periodLength !== undefined && periodLength !== null && (!Number.isInteger(periodLength) || periodLength < 1 || periodLength > 20))
+    throw new Error('typical_period_length must be an integer between 1 and 20.');
 }
 
 function validateBirthControlProfile(values: BirthControlProfileInput): string | null {
@@ -184,7 +192,7 @@ export function createCycleApi(client: CycleDataClient) {
   async function updateCycleSettings(values: CycleSettingsUpdate): Promise<CycleSettingsRow> {
     validateCycleSettingsUpdate(values);
     const userId = await authenticatedUserId(client);
-    const result = await client.from('cycle_settings').upsert({ user_id: userId, ...values }).select('*').single();
+    const result = await client.from('cycle_settings').upsert({ user_id: userId, ...values }, { onConflict: 'user_id' }).select('*').single();
     fail(result.error);
     return result.data as CycleSettingsRow;
   }

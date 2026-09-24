@@ -38,6 +38,7 @@ import {
   type CheckInRow,
   type JournalRow,
   type MedicationRow,
+  type MedicationLogRow,
   type Profile,
 } from "../src/api";
 import MyPatternsScreen from "../src/MyPatternsScreen";
@@ -58,24 +59,19 @@ import * as Notifications from "expo-notifications";
 import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
-import { theme } from "../src/theme/tokens";
+import MedicationScreen from "../src/MedicationScreen";
+import FoodScreen from "../src/FoodScreen";
+import { themes, type ThemeId, type ThemeTokens } from "../src/theme/tokens";
+import { useTheme } from "../src/theme/context";
 import { Button, Card, Field, Notice } from "../src/components";
 
-type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  cream: theme.colors.background,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
+type Tab = "Home" | "Check-In" | "Cycle" | "Meds" | "Food" | "Trends" | "Journal" | "Profile";
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
   ["Check-In", "heart-outline"],
   ["Cycle", "calendar-outline"],
+  ["Meds", "medical-outline"],
+  ["Food", "restaurant-outline"],
   ["Trends", "stats-chart-outline"],
   ["Journal", "book-outline"],
   ["Profile", "person-outline"],
@@ -116,7 +112,24 @@ const feelings = [
   "Hopeful",
 ];
 
+function useAppPalette() {
+  const { theme } = useTheme();
+  const C = useMemo(() => ({
+    ink: theme.colors.textPrimary,
+    muted: theme.colors.textMuted,
+    moss: theme.colors.brandPrimary,
+    sage: theme.colors.accentSage,
+    cream: theme.colors.background,
+    white: theme.colors.surface,
+    line: theme.colors.surfaceBorder,
+    danger: theme.colors.danger,
+  }), [theme]);
+  const s = useMemo(() => createStyles(theme), [theme]);
+  return { theme, C, s };
+}
+
 function Busy() {
+  const { C, s } = useAppPalette();
   return (
     <View style={s.center}>
       <ActivityIndicator size="large" color={C.moss} />
@@ -126,6 +139,7 @@ function Busy() {
 }
 
 function Auth({ recoveryError = "" }: { recoveryError?: string }) {
+  const { C, s } = useAppPalette();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signIn" | "signUp" | "forgot">("signIn");
@@ -280,6 +294,7 @@ function Auth({ recoveryError = "" }: { recoveryError?: string }) {
 }
 
 function ResetPassword({ onDone }: { onDone: () => void }) {
+  const { C, s } = useAppPalette();
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
@@ -353,6 +368,7 @@ function RecoveryError({
   onDismiss: () => void;
   signedIn: boolean;
 }) {
+  const { C, s } = useAppPalette();
   return (
     <ScrollView contentContainerStyle={s.auth}>
       <View style={s.brand}>
@@ -385,6 +401,7 @@ function Onboarding({
   userId: string;
   onDone: (p: Profile) => void;
 }) {
+  const { C, s } = useAppPalette();
   const [name, setName] = useState("");
   const [tracking, setTracking] = useState<"pmdd" | "postpartum">("pmdd");
   const [busy, setBusy] = useState(false);
@@ -466,6 +483,7 @@ function CheckIn({
   onSupport: () => void;
   reducedMotion: boolean;
 }) {
+  const { C, s } = useAppPalette();
   const [step, setStep] = useState(0);
   const [mood, setMood] = useState(existing?.mood ?? 3);
   const [sleep, setSleep] = useState(existing?.sleep ?? 3);
@@ -765,6 +783,7 @@ function CheckIn({
   );
 }
 function Safety({ close }: { close: () => void }) {
+  const { C, s } = useAppPalette();
   return (
     <ScrollView contentContainerStyle={s.scroll}>
       <Button secondary label="Close" icon="close" onPress={close} />
@@ -799,6 +818,7 @@ function Safety({ close }: { close: () => void }) {
 }
 
 export default function App() {
+  const { theme: activeTheme, C, s } = useAppPalette();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Awaited<
@@ -909,7 +929,7 @@ export default function App() {
     recoveryDisplay === "error-with-session"
   )
     return (
-      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520) }]}>
+      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520), backgroundColor: activeTheme.colors.background }]}>
         <RecoveryError
           message={recoveryError}
           signedIn={Boolean(session)}
@@ -975,6 +995,10 @@ export default function App() {
         reducedMotion={reducedMotion}
       />
     );
+  else if (tab === "Meds")
+    body = <MedicationScreen userId={session.user.id} medications={data.medications} logs={data.logs as MedicationLogRow[]} onChanged={refresh} />;
+  else if (tab === "Food")
+    body = <FoodScreen userId={session.user.id} entries={data.food} onChanged={refresh} />;
   else if (tab === "Check-In")
     body = (
       <CheckIn
@@ -1050,7 +1074,7 @@ export default function App() {
           <Button
             secondary
             label="Manage medications"
-            onPress={() => setTab("Profile")}
+            onPress={() => setTab("Meds")}
           />
         </Card>
       </ScrollView>
@@ -1132,7 +1156,7 @@ export default function App() {
       />
     );
   return (
-    <View style={s.shell}>
+    <View style={[s.shell, { backgroundColor: activeTheme.colors.background }]}>
       <SafeAreaView
         style={[s.app, { maxWidth: Math.min(width, 520) }]}
         edges={["top", "bottom"]}
@@ -1165,7 +1189,7 @@ export default function App() {
             <Text style={s.supportText}>Support</Text>
           </Pressable>
         )}
-        <View style={s.nav}>
+        <View style={[s.nav, { backgroundColor: activeTheme.colors.surface, borderColor: activeTheme.colors.surfaceBorder }]}>
           {tabs.map(([name, icon]) => (
             <Pressable
               accessibilityRole="tab"
@@ -1184,9 +1208,9 @@ export default function App() {
               <Ionicons
                 name={icon}
                 size={21}
-                color={tab === name ? C.moss : C.muted}
+                color={tab === name ? activeTheme.colors.brandPrimary : activeTheme.colors.textMuted}
               />
-              <Text style={[s.navText, tab === name && { color: C.moss }]}>
+              <Text style={[s.navText, { color: activeTheme.colors.textMuted }, tab === name && { color: activeTheme.colors.brandPrimary }]}>
                 {name}
               </Text>
             </Pressable>
@@ -1206,6 +1230,7 @@ function JournalScreen({
   entries: JournalRow[];
   run: (w: () => Promise<unknown>, m: string) => Promise<void>;
 }) {
+  const { C, s } = useAppPalette();
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   async function save() {
@@ -1278,6 +1303,8 @@ function ProfileScreen({
   journal: JournalRow[];
   run: (w: () => Promise<unknown>, m: string) => Promise<void>;
 }) {
+  const { C, s } = useAppPalette();
+  const { themeId: appearance, setThemeId: onAppearanceChange } = useTheme();
   const [name, setName] = useState("");
   const [schedule, setSchedule] = useState("");
   async function exportData() {
@@ -1316,67 +1343,37 @@ function ProfileScreen({
       <Text style={s.kicker}>YOUR SPACE</Text>
       <Text style={s.title}>{profile.display_name}</Text>
       <Card>
-        <Text accessibilityRole="header" style={s.heading}>
-          Add medication
-        </Text>
-        <Field
-          label="Medication name"
-          value={name}
-          onChangeText={setName}
-          maxLength={120}
-        />
-        <Field
-          label="Schedule (optional)"
-          value={schedule}
-          onChangeText={setSchedule}
-          maxLength={120}
-        />
-        <Button
-          disabled={!name.trim()}
-          label="Add medication"
-          onPress={async () => {
-            await run(
-              () => addMedication(userId, name.trim(), schedule.trim()),
-              "Medication added.",
+        <Text accessibilityRole="header" style={s.heading}>Appearance</Text>
+        <Text style={s.body}>Choose a calming color palette. This only changes how Symptom Story looks and never changes your health records or predictions.</Text>
+        <View style={s.themeGrid}>
+          {(Object.keys(themes) as ThemeId[]).map((themeId) => {
+            const option = themes[themeId];
+            const selected = appearance === themeId;
+            return (
+              <Pressable
+                key={themeId}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={`${option.name} theme`}
+                onPress={() => void onAppearanceChange(themeId)}
+                style={[s.themeChoice, { backgroundColor: option.colors.background, borderColor: selected ? option.colors.brandPrimary : option.colors.surfaceBorder }, selected && s.themeChoiceOn]}
+              >
+                <View style={s.themeSwatches}>
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.brandPrimary }]} />
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.accentSage }]} />
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.brandSecondary }]} />
+                </View>
+                <Text style={[s.themeName, { color: option.colors.textPrimary }]}>{option.name}</Text>
+                {selected && <Ionicons name="checkmark-circle" size={20} color={option.colors.brandPrimary} />}
+              </Pressable>
             );
-            setName("");
-            setSchedule("");
-          }}
-        />
+          })}
+        </View>
       </Card>
-      {medications.length === 0 ? (
-        <Card>
-          <Text accessibilityRole="header" style={s.heading}>
-            No medications
-          </Text>
-          <Text style={s.body}>Medications you add will appear here.</Text>
-        </Card>
-      ) : (
-        medications.map((m) => (
-          <Card key={m.id}>
-            <Text accessibilityRole="header" style={s.heading}>
-              {m.name}
-            </Text>
-            <Text style={s.muted}>{m.schedule || "No schedule recorded"}</Text>
-            <View style={s.row}>
-              <Button
-                secondary
-                label="Log taken"
-                onPress={() =>
-                  run(() => logMedication(userId, m.id), "Medication logged.")
-                }
-              />
-              <Button
-                secondary
-                label="Remove"
-                onPress={() =>
-                  run(() => deleteMedication(m.id), "Medication removed.")
-                }
-              />
-            </View>
-          </Card>
-        ))
-      )}
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>Medications</Text>
+        <Text style={s.body}>Medication schedules and dose logging now live in the Meds calendar so there is one place to manage them.</Text>
+      </Card>
       <Card>
         <Text accessibilityRole="header" style={s.heading}>
           Data & Privacy
@@ -1415,7 +1412,18 @@ function ProfileScreen({
   );
 }
 
-const s = StyleSheet.create({
+const createStyles = (theme: ThemeTokens) => {
+  const C = {
+    ink: theme.colors.textPrimary,
+    muted: theme.colors.textMuted,
+    moss: theme.colors.brandPrimary,
+    sage: theme.colors.accentSage,
+    cream: theme.colors.background,
+    white: theme.colors.surface,
+    line: theme.colors.surfaceBorder,
+    danger: theme.colors.danger,
+  };
+  return StyleSheet.create({
   shell: { flex: 1, backgroundColor: "#E9ECE8", alignItems: "center" },
   app: { flex: 1, width: "100%", backgroundColor: C.cream },
   scroll: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 32, gap: 14 },
@@ -1429,9 +1437,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 30, fontWeight: "800", color: C.ink, letterSpacing: -0.7 },
+  title: { fontSize: 30, fontFamily: "Georgia", fontWeight: "700", color: C.ink, letterSpacing: -0.4 },
   subtitle: { fontSize: 15, lineHeight: 22, color: C.muted },
-  heading: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: C.ink },
+  heading: { fontSize: 18, lineHeight: 24, fontFamily: "Georgia", fontWeight: "700", color: C.ink },
   body: { fontSize: 14, lineHeight: 21, color: C.ink },
   muted: { fontSize: 13, lineHeight: 19, color: C.muted },
   kicker: {
@@ -1608,4 +1616,11 @@ const s = StyleSheet.create({
     gap: 6,
   },
   supportText: { fontSize: 13, fontWeight: "800", color: C.moss },
-});
+  themeGrid: { gap: 9 },
+  themeChoice: { minHeight: 68, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
+  themeChoiceOn: { borderWidth: 2 },
+  themeSwatches: { flexDirection: "row" },
+  themeSwatch: { width: 22, height: 22, borderRadius: 11, marginRight: -5, borderWidth: 1, borderColor: "#FFFFFF" },
+  themeName: { flex: 1, fontSize: 15, fontWeight: "800" },
+  });
+};

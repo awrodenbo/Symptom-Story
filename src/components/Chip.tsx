@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 type ChipProps = {
   label: string;
@@ -17,6 +17,8 @@ export function Chip({
   accessibilityRole = 'radio',
   accessibilityLabel,
 }: ChipProps) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   return (
     <Pressable
       accessibilityRole={accessibilityRole}
@@ -30,7 +32,7 @@ export function Chip({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   chip: {
     minHeight: theme.touchTarget.minHeight,
     paddingHorizontal: 16,
