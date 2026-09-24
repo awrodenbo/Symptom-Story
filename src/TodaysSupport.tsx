@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import {
   loadCycleEvents,
@@ -16,18 +16,8 @@ import {
   type TodaysSupport as TodaysSupportResult,
 } from "./domain";
 
-import { theme } from "./theme/tokens";
+import { useTheme } from "./theme/context";
 import { Card, Notice } from "./components";
-
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
 
 function localDate(): string {
   const now = new Date();
@@ -35,6 +25,9 @@ function localDate(): string {
 }
 
 export default function TodaysSupport({ checkIns, onCheckIn }: { checkIns: CheckInRow[]; onCheckIn: () => void }) {
+  const { theme } = useTheme();
+  const C = React.useMemo(() => ({ ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger }), [theme]);
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const [result, setResult] = useState<TodaysSupportResult | null>(null);
   const [error, setError] = useState("");
 
@@ -95,7 +88,9 @@ function PressableButton({ label, onPress }: { label: string; onPress: () => voi
   return <Text accessibilityRole="button" onPress={onPress} style={styles.link}>{label}</Text>;
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import("./theme/tokens").ThemeTokens) => {
+  const C = { ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger };
+  return StyleSheet.create({
   container: { gap: 10 },
   loading: { minHeight: 70, alignItems: "center", justifyContent: "center", gap: 8 },
   kicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, color: C.moss },
@@ -113,4 +108,5 @@ const styles = StyleSheet.create({
   category: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, color: C.moss },
   recommendationTitle: { fontSize: 15, lineHeight: 20, fontWeight: "700", color: C.ink },
   pattern: { borderTopWidth: 1, borderTopColor: C.line, paddingTop: 9, gap: 3 },
-});
+  });
+};
