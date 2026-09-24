@@ -22,7 +22,9 @@ const baseSettings: CycleSettingsRow = {
   intimacy_tracking_enabled: false,
   ttc_features_enabled: false,
   reminder_enabled: true,
-  reminder_days_before: 7,\n  typical_cycle_length: null,\n  typical_period_length: null,
+  reminder_days_before: 7,
+  typical_cycle_length: null,
+  typical_period_length: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 };
