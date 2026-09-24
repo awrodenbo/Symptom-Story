@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { Session } from "@supabase/supabase-js";
 import { useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   AccessibilityInfo,
   ActivityIndicator,
@@ -58,7 +59,7 @@ import * as Notifications from "expo-notifications";
 import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
-import { theme } from "../src/theme/tokens";
+import { theme, themes, type ThemeId } from "../src/theme/tokens";
 import { Button, Card, Field, Notice } from "../src/components";
 
 type Tab = "Home" | "Check-In" | "Cycle" | "Trends" | "Journal" | "Profile";
@@ -811,6 +812,16 @@ export default function App() {
   const [recoveringPassword, setRecoveringPassword] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [appearance, setAppearance] = useState<ThemeId>("sage");
+  useEffect(() => {
+    AsyncStorage.getItem("symptom-story:appearance").then((saved) => {
+      if (saved && saved in themes) setAppearance(saved as ThemeId);
+    });
+  }, []);
+  async function changeAppearance(next: ThemeId) {
+    setAppearance(next);
+    await AsyncStorage.setItem("symptom-story:appearance", next);
+  }
   const { width } = useWindowDimensions();
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
@@ -909,7 +920,7 @@ export default function App() {
     recoveryDisplay === "error-with-session"
   )
     return (
-      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520) }]}>
+      <SafeAreaView style={[s.app, { maxWidth: Math.min(width, 520), backgroundColor: activeTheme.colors.background }]}>
         <RecoveryError
           message={recoveryError}
           signedIn={Boolean(session)}
@@ -1118,6 +1129,8 @@ export default function App() {
         userId={session.user.id}
         entries={data.journal}
         run={action}
+        appearance={appearance}
+        onAppearanceChange={changeAppearance}
       />
     );
   } else
@@ -1131,8 +1144,9 @@ export default function App() {
         run={action}
       />
     );
+  const activeTheme = themes[appearance];
   return (
-    <View style={s.shell}>
+    <View style={[s.shell, { backgroundColor: activeTheme.colors.background }]}>
       <SafeAreaView
         style={[s.app, { maxWidth: Math.min(width, 520) }]}
         edges={["top", "bottom"]}
@@ -1165,7 +1179,7 @@ export default function App() {
             <Text style={s.supportText}>Support</Text>
           </Pressable>
         )}
-        <View style={s.nav}>
+        <View style={[s.nav, { backgroundColor: activeTheme.colors.surface, borderColor: activeTheme.colors.surfaceBorder }]}>
           {tabs.map(([name, icon]) => (
             <Pressable
               accessibilityRole="tab"
@@ -1184,9 +1198,9 @@ export default function App() {
               <Ionicons
                 name={icon}
                 size={21}
-                color={tab === name ? C.moss : C.muted}
+                color={tab === name ? activeTheme.colors.brandPrimary : activeTheme.colors.textMuted}
               />
-              <Text style={[s.navText, tab === name && { color: C.moss }]}>
+              <Text style={[s.navText, { color: activeTheme.colors.textMuted }, tab === name && { color: activeTheme.colors.brandPrimary }]}>
                 {name}
               </Text>
             </Pressable>
@@ -1270,6 +1284,8 @@ function ProfileScreen({
   checkIns,
   journal,
   run,
+  appearance,
+  onAppearanceChange,
 }: {
   userId: string;
   profile: Profile;
@@ -1277,6 +1293,8 @@ function ProfileScreen({
   checkIns: CheckInRow[];
   journal: JournalRow[];
   run: (w: () => Promise<unknown>, m: string) => Promise<void>;
+  appearance: ThemeId;
+  onAppearanceChange: (theme: ThemeId) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [schedule, setSchedule] = useState("");
@@ -1315,6 +1333,34 @@ function ProfileScreen({
     >
       <Text style={s.kicker}>YOUR SPACE</Text>
       <Text style={s.title}>{profile.display_name}</Text>
+      <Card>
+        <Text accessibilityRole="header" style={s.heading}>Appearance</Text>
+        <Text style={s.body}>Choose a calming color palette. This only changes how Symptom Story looks and never changes your health records or predictions.</Text>
+        <View style={s.themeGrid}>
+          {(Object.keys(themes) as ThemeId[]).map((themeId) => {
+            const option = themes[themeId];
+            const selected = appearance === themeId;
+            return (
+              <Pressable
+                key={themeId}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={`${option.name} theme`}
+                onPress={() => void onAppearanceChange(themeId)}
+                style={[s.themeChoice, { backgroundColor: option.colors.background, borderColor: selected ? option.colors.brandPrimary : option.colors.surfaceBorder }, selected && s.themeChoiceOn]}
+              >
+                <View style={s.themeSwatches}>
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.brandPrimary }]} />
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.accentSage }]} />
+                  <View style={[s.themeSwatch, { backgroundColor: option.colors.brandSecondary }]} />
+                </View>
+                <Text style={[s.themeName, { color: option.colors.textPrimary }]}>{option.name}</Text>
+                {selected && <Ionicons name="checkmark-circle" size={20} color={option.colors.brandPrimary} />}
+              </Pressable>
+            );
+          })}
+        </View>
+      </Card>
       <Card>
         <Text accessibilityRole="header" style={s.heading}>
           Add medication
@@ -1608,4 +1654,10 @@ const s = StyleSheet.create({
     gap: 6,
   },
   supportText: { fontSize: 13, fontWeight: "800", color: C.moss },
+  themeGrid: { gap: 9 },
+  themeChoice: { minHeight: 68, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 12 },
+  themeChoiceOn: { borderWidth: 2 },
+  themeSwatches: { flexDirection: "row" },
+  themeSwatch: { width: 22, height: 22, borderRadius: 11, marginRight: -5, borderWidth: 1, borderColor: "#FFFFFF" },
+  themeName: { flex: 1, fontSize: 15, fontWeight: "800" },
 });
