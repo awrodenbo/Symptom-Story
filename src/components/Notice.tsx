@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { theme } from '../theme/tokens.ts';
+import { useTheme } from '../theme/context';
 
 export function Notice({ text, error = false }: { text: string; error?: boolean }) {
+  const { theme } = useTheme();
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   return (
     <View
       accessibilityLiveRegion="polite"
@@ -13,7 +15,7 @@ export function Notice({ text, error = false }: { text: string; error?: boolean 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import('../theme/tokens').ThemeTokens) => StyleSheet.create({
   notice: {
     padding: 12,
     borderRadius: theme.radii.md,
