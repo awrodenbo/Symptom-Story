@@ -71,23 +71,14 @@ export async function saveCheckIn(userId: string, values: Omit<CheckInRow, 'id'|
 
 export async function deleteCheckIn(id: string) { const result = await supabase.from('check_ins').delete().eq('id', id); fail(result.error); }
 export type MedicationScheduleInput = { name: string; schedule?: string; frequency: MedicationRow['frequency']; time_of_day?: MedicationRow['time_of_day']; scheduled_time?: string | null; weekdays?: number[] };
-function legacyMedicationSchedule(input: MedicationScheduleInput) {
-  return "S2|" + JSON.stringify({ frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] });
-}
 export async function addMedication(userId: string, input: MedicationScheduleInput) {
-  const payload = { user_id: userId, name: input.name, schedule: input.schedule || legacyMedicationSchedule(input), frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
-  let result = await supabase.from('medications').insert(payload).select().single();
-  if (result.error && /frequency|time_of_day|scheduled_time|weekdays|schema cache|column/i.test(result.error.message)) {
-    result = await supabase.from('medications').insert({ user_id: userId, name: input.name, schedule: legacyMedicationSchedule(input) }).select().single();
-  }
+  const payload = { user_id: userId, name: input.name, schedule: input.schedule ?? null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
+  const result = await supabase.from('medications').insert(payload).select().single();
   fail(result.error); return result.data as MedicationRow;
 }
 export async function updateMedication(id: string, input: MedicationScheduleInput) {
-  const payload = { name: input.name, schedule: input.schedule || legacyMedicationSchedule(input), frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
-  let result = await supabase.from('medications').update(payload).eq('id', id).select().single();
-  if (result.error && /frequency|time_of_day|scheduled_time|weekdays|schema cache|column/i.test(result.error.message)) {
-    result = await supabase.from('medications').update({ name: input.name, schedule: legacyMedicationSchedule(input) }).eq('id', id).select().single();
-  }
+  const payload = { name: input.name, schedule: input.schedule ?? null, frequency: input.frequency, time_of_day: input.time_of_day ?? null, scheduled_time: input.scheduled_time ?? null, weekdays: input.weekdays ?? [] };
+  const result = await supabase.from('medications').update(payload).eq('id', id).select().single();
   fail(result.error); return result.data as MedicationRow;
 }
 export async function deleteMedication(id: string) { const result = await supabase.from('medications').delete().eq('id', id); fail(result.error); }
