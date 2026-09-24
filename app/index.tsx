@@ -1437,9 +1437,9 @@ const createStyles = (theme: ThemeTokens) => {
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 30, fontWeight: "800", color: C.ink, letterSpacing: -0.7 },
+  title: { fontSize: 30, fontFamily: "Georgia", fontWeight: "700", color: C.ink, letterSpacing: -0.4 },
   subtitle: { fontSize: 15, lineHeight: 22, color: C.muted },
-  heading: { fontSize: 18, lineHeight: 24, fontWeight: "700", color: C.ink },
+  heading: { fontSize: 18, lineHeight: 24, fontFamily: "Georgia", fontWeight: "700", color: C.ink },
   body: { fontSize: 14, lineHeight: 21, color: C.ink },
   muted: { fontSize: 13, lineHeight: 19, color: C.muted },
   kicker: {
