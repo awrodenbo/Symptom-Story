@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -53,19 +53,8 @@ import {
   reconcilePrePeriodNotification,
   requestNotificationPermission,
 } from "./notifications";
-import { theme } from "./theme/tokens";
+import { useTheme } from "./theme/context";
 import { Button, Card, Field, Notice, ToggleRow, Chip } from "./components";
-
-const C = {
-  ink: theme.colors.textPrimary,
-  muted: theme.colors.textMuted,
-  moss: theme.colors.brandPrimary,
-  sage: theme.colors.accentSage,
-  cream: theme.colors.background,
-  white: theme.colors.surface,
-  line: theme.colors.surfaceBorder,
-  danger: theme.colors.danger,
-};
 
 const eventLabels: Record<CycleEventType, string> = {
   period_start: "Start period",
@@ -146,6 +135,9 @@ function eventInput(type: CycleEventType, eventDate: string, occurredAt: string,
 }
 
 export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onCheckIn: () => void; reducedMotion: boolean; checkIn?: CheckInRow }) {
+  const { theme } = useTheme();
+  const C = React.useMemo(() => ({ ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger }), [theme]);
+  const styles = React.useMemo(() => createStyles(theme), [theme]);
   const [settings, setSettings] = useState<CycleSettingsRow | null>(null);
   const [birthControl, setBirthControl] = useState<BirthControlProfileRow | null>(null);
   const [intimacyEvents, setIntimacyEvents] = useState<IntimacyEventRow[]>([]);
@@ -745,7 +737,9 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme: import("./theme/tokens").ThemeTokens) => {
+  const C = { ink: theme.colors.textPrimary, muted: theme.colors.textMuted, moss: theme.colors.brandPrimary, sage: theme.colors.accentSage, cream: theme.colors.background, white: theme.colors.surface, line: theme.colors.surfaceBorder, danger: theme.colors.danger };
+  return StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 32, gap: 14 },
   center: { flex: 1, padding: 24, alignItems: "center", justifyContent: "center", gap: 16 },
   kicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, color: C.moss },
@@ -807,4 +801,5 @@ const styles = StyleSheet.create({
   calendarDot: { position: "absolute", bottom: 5, width: 4, height: 4, borderRadius: 2, backgroundColor: C.white },
   legend: { flexDirection: "row", alignItems: "center", gap: 7, flexWrap: "wrap" },
   legendSwatch: { width: 16, height: 16, borderRadius: 8 },
-});
+  });
+};
