@@ -6,16 +6,20 @@ import { useTheme } from "./theme/context";
 const D=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const T={morning:"Morning",afternoon:"Afternoon",evening:"Evening",night:"Night"} as const;
 const key=(y:number,m:number,d:number)=>[y,String(m+1).padStart(2,"0"),String(d).padStart(2,"0")].join("-");
+function storedSchedule(m:MedicationRow){
+ if(!m.schedule?.startsWith("S2|")) return null;
+ try{return JSON.parse(m.schedule.slice(3)) as {frequency?:MedicationRow["frequency"];time_of_day?:MedicationRow["time_of_day"];weekdays?:number[]};}catch{return null;}
+}
 function due(m:MedicationRow,date:string){
- const day=new Date(date+"T00:00:00").getDay();
- const frequency=m.frequency??"custom";
- const weekdays=Array.isArray(m.weekdays)?m.weekdays:[];
+ const day=new Date(date+"T00:00:00").getDay(), saved=storedSchedule(m);
+ const frequency=m.frequency??saved?.frequency??"custom";
+ const weekdays=Array.isArray(m.weekdays)?m.weekdays:(Array.isArray(saved?.weekdays)?saved!.weekdays!:[]);
  if(frequency==="daily") return true;
  if(frequency==="weekly"||frequency==="custom") return weekdays.includes(day);
- // Legacy medications created before structured schedules remain visible but are not assumed due.
  return false;
 }
-function timeLabel(m:MedicationRow){return m.time_of_day&&T[m.time_of_day]?T[m.time_of_day]:m.schedule||"No usual time";}
+function timeLabel(m:MedicationRow){const saved=storedSchedule(m),tod=m.time_of_day??saved?.time_of_day;return tod&&T[tod]?T[tod]:(m.schedule&&!m.schedule.startsWith("S2|")?m.schedule:"No usual time");}
+function frequencyLabel(m:MedicationRow){const saved=storedSchedule(m),f=m.frequency??saved?.frequency;return f?f.replace("_"," "):(m.schedule&&!m.schedule.startsWith("S2|")?m.schedule:"Existing medication");}
 export default function MedicationScreen({userId,medications,logs,onChanged}:{userId:string;medications:MedicationRow[];logs:MedicationLogRow[];onChanged:()=>Promise<void>}){
  const {theme}=useTheme(),C=theme.colors,n=new Date(); const [cal,setCal]=useState({y:n.getFullYear(),m:n.getMonth()}),[selected,setSelected]=useState(key(n.getFullYear(),n.getMonth(),n.getDate()));
  const [name,setName]=useState(""),[frequency,setFrequency]=useState<MedicationRow["frequency"]>("daily"),[tod,setTod]=useState<NonNullable<MedicationRow["time_of_day"]>>("morning"),[weekdays,setWeekdays]=useState<number[]>([]);
@@ -34,6 +38,6 @@ export default function MedicationScreen({userId,medications,logs,onChanged}:{us
   <Card><View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}}><Button secondary label="‹" onPress={()=>setCal(v=>v.m===0?{y:v.y-1,m:11}:{y:v.y,m:v.m-1})}/><Text style={{fontSize:18,fontWeight:"800",color:C.textPrimary}}>{new Date(cal.y,cal.m,1).toLocaleDateString(undefined,{month:"long",year:"numeric"})}</Text><Button secondary label="›" onPress={()=>setCal(v=>v.m===11?{y:v.y+1,m:0}:{y:v.y,m:v.m+1})}/></View>
    <View style={{flexDirection:"row",flexWrap:"wrap"}}>{D.map(d=><Text key={d} style={{width:"14.285%",textAlign:"center",fontSize:11,fontWeight:"700",color:C.textMuted}}>{d[0]}</Text>)}{Array.from({length:new Date(cal.y,cal.m,1).getDay()}).map((_,i)=><View key={"b"+i} style={{width:"14.285%",height:48}}/>)}{Array.from({length:new Date(cal.y,cal.m+1,0).getDate()}).map((_,i)=>{const d=i+1,k=key(cal.y,cal.m,d),scheduled=medications.some(m=>due(m,k)),taken=logsFor(k).some(l=>l.status==="taken");return <Pressable key={k} onPress={()=>setSelected(k)} style={{width:"14.285%",height:48,alignItems:"center",justifyContent:"center",borderRadius:24,borderWidth:selected===k?2:0,borderColor:C.brandPrimary,backgroundColor:taken?C.accentSage:undefined}}><Text style={{color:C.textPrimary,fontWeight:selected===k?"800":"500"}}>{d}</Text>{scheduled&&<View style={{width:6,height:6,borderRadius:3,marginTop:3,backgroundColor:taken?C.brandPrimary:C.brandSecondary}}/>}</Pressable>})}</View><Text style={{color:C.textMuted}}>Dot = scheduled · filled day = recorded taken</Text></Card>
   <Card><Text style={{fontSize:19,fontWeight:"800",color:C.textPrimary}}>{new Date(selected+"T00:00:00").toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"})}</Text>{!selectedMeds.length?<Text style={{color:C.textMuted}}>No scheduled medications for this day.</Text>:selectedMeds.map(m=>{const e=logsFor(selected).find(l=>l.medication_id===m.id);return <View key={m.id} style={{gap:8,paddingVertical:8,borderBottomWidth:1,borderBottomColor:C.surfaceBorder}}><Text style={{fontWeight:"800",color:C.textPrimary}}>{m.name}</Text><Text style={{color:C.textMuted}}>{timeLabel(m)} · {e?e.status:"Not logged"}</Text><View style={{flexDirection:"row",gap:8}}><Button secondary={e?.status!=="taken"} label="Taken" onPress={()=>mark(m,"taken")}/><Button secondary={e?.status!=="skipped"} label="Skipped" onPress={()=>mark(m,"skipped")}/></View></View>})}</Card>
-  {medications.map(m=><Card key={m.id}><Text style={{fontSize:18,fontWeight:"800",color:C.textPrimary}}>{m.name}</Text><Text style={{color:C.textMuted}}>{(m.frequency??m.schedule??"Existing medication").replace("_"," ")} · {m.time_of_day?T[m.time_of_day]:"No usual time"}</Text><Button secondary label="Remove medication" onPress={async()=>{await deleteMedication(m.id);await onChanged();}}/></Card>)}
+  {medications.map(m=><Card key={m.id}><Text style={{fontSize:18,fontWeight:"800",color:C.textPrimary}}>{m.name}</Text><Text style={{color:C.textMuted}}>{frequencyLabel(m)} · {timeLabel(m)}</Text><Button secondary label="Remove medication" onPress={async()=>{await deleteMedication(m.id);await onChanged();}}/></Card>)}
  </ScrollView>;
 }
