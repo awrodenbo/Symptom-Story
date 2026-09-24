@@ -117,6 +117,41 @@ function addCalendarDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+function dateFallsWithin(date: string, start: string, end: string): boolean {
+  return date >= start && date <= end;
+}
+
+function recordedPeriodDates(events: CycleEventRow[]): Set<string> {
+  const dates = new Set<string>();
+  const ordered = events
+    .filter((event) => event.event_type === "period_start" || event.event_type === "period_end")
+    .slice()
+    .sort((left, right) => left.event_date.localeCompare(right.event_date));
+  let openStart: string | null = null;
+  for (const event of ordered) {
+    if (event.event_type === "period_start") {
+      openStart = event.event_date;
+      dates.add(event.event_date);
+      continue;
+    }
+    if (openStart && event.event_date >= openStart) {
+      let cursor = openStart;
+      while (cursor <= event.event_date) {
+        dates.add(cursor);
+        cursor = addCalendarDays(cursor, 1);
+      }
+      openStart = null;
+    } else {
+      dates.add(event.event_date);
+    }
+  }
+  if (openStart) dates.add(openStart);
+  events
+    .filter((event) => event.event_type === "flow")
+    .forEach((event) => dates.add(event.event_date));
+  return dates;
+}
+
 function friendlyDate(date: string): string {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -419,12 +454,18 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
   const history = calculateCycleHistory(domainEvents);
   const learnedNextPeriod = estimateNextPeriod(domainEvents);
   const latestStart = events.filter((event) => event.event_type === "period_start").map((event) => event.event_date).sort().at(-1) ?? null;
-  const baselineNextDate = learnedNextPeriod.status === "insufficient-history" && latestStart && settings?.typical_cycle_length
+  const baselineNextDate = latestStart && settings?.typical_cycle_length
     ? addCalendarDays(latestStart, settings.typical_cycle_length)
     : null;
-  const nextPeriod = baselineNextDate
-    ? { ...learnedNextPeriod, status: "limited-history" as const, estimatedDate: baselineNextDate, estimatedRange: null, isEstimate: true }
-    : learnedNextPeriod;
+  const nextPeriod = learnedNextPeriod.isEstimate && learnedNextPeriod.estimatedDate
+    ? learnedNextPeriod
+    : baselineNextDate
+      ? { ...learnedNextPeriod, status: "limited-history" as const, estimatedDate: baselineNextDate, estimatedRange: null, isEstimate: true }
+      : learnedNextPeriod;
+  const recordedPeriodDays = recordedPeriodDates(events);
+  const predictedPeriodEnd = nextPeriod.estimatedDate
+    ? addCalendarDays(nextPeriod.estimatedDate, Math.max(1, settings?.typical_period_length ?? 5) - 1)
+    : null;
   const phase = estimateCyclePhase(domainEvents, localDate());
   const grouped = events.reduce<Record<string, CycleEventRow[]>>((groups, event) => {
     (groups[event.event_date] ??= []).push(event);
@@ -535,9 +576,8 @@ export default function CycleScreen({ onCheckIn, reducedMotion, checkIn }: { onC
                 const day = index + 1;
                 const date = [calendarMonth.year, String(calendarMonth.month + 1).padStart(2, "0"), String(day).padStart(2, "0")].join("-");
                 const recorded = grouped[date] ?? [];
-                const hasPeriod = recorded.some((event) => event.event_type === "period_start" || event.event_type === "period_end" || event.event_type === "flow");
-                const predictedLength = settings?.typical_period_length ?? 5;
-                const predicted = nextPeriod.estimatedDate ? calendarDifference(nextPeriod.estimatedDate, date) >= 0 && calendarDifference(nextPeriod.estimatedDate, date) < predictedLength : false;
+                const hasPeriod = recordedPeriodDays.has(date);
+                const predicted = Boolean(nextPeriod.estimatedDate && predictedPeriodEnd && dateFallsWithin(date, nextPeriod.estimatedDate, predictedPeriodEnd));
                 const isToday = date === localDate();
                 return <Pressable key={date} accessibilityRole="button" accessibilityLabel={friendlyDate(date)} onPress={() => { setEventDate(date); setOccurredAt(`${date}${localTimestamp().slice(10)}`); }} style={[styles.calendarDay, hasPeriod && styles.calendarPeriod, predicted && !hasPeriod && styles.calendarPredicted, isToday && styles.calendarToday]}>
                   <Text style={[styles.calendarDayText, hasPeriod && styles.calendarPeriodText]}>{day}</Text>
