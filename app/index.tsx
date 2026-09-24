@@ -60,16 +60,18 @@ import { reconcilePrePeriodNotification } from "../src/notifications";
 import CycleScreen from "../src/CycleScreen";
 import TodaysSupport from "../src/TodaysSupport";
 import MedicationScreen from "../src/MedicationScreen";
+import FoodScreen from "../src/FoodScreen";
 import { themes, type ThemeId, type ThemeTokens } from "../src/theme/tokens";
 import { useTheme } from "../src/theme/context";
 import { Button, Card, Field, Notice } from "../src/components";
 
-type Tab = "Home" | "Check-In" | "Cycle" | "Meds" | "Trends" | "Journal" | "Profile";
+type Tab = "Home" | "Check-In" | "Cycle" | "Meds" | "Food" | "Trends" | "Journal" | "Profile";
 const tabs: [Tab, keyof typeof Ionicons.glyphMap][] = [
   ["Home", "home-outline"],
   ["Check-In", "heart-outline"],
   ["Cycle", "calendar-outline"],
   ["Meds", "medical-outline"],
+  ["Food", "restaurant-outline"],
   ["Trends", "stats-chart-outline"],
   ["Journal", "book-outline"],
   ["Profile", "person-outline"],
@@ -995,6 +997,8 @@ export default function App() {
     );
   else if (tab === "Meds")
     body = <MedicationScreen userId={session.user.id} medications={data.medications} logs={data.logs as MedicationLogRow[]} onChanged={refresh} />;
+  else if (tab === "Food")
+    body = <FoodScreen userId={session.user.id} entries={data.food} onChanged={refresh} />;
   else if (tab === "Check-In")
     body = (
       <CheckIn
