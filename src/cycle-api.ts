@@ -8,6 +8,7 @@ export type CycleSettingsRow = {
   ttc_features_enabled: boolean;
   reminder_enabled: boolean;
   reminder_days_before: number;
+  typical_cycle_length_days: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -29,7 +30,7 @@ export type CycleEventInput = {
 
 export type CycleSettingsUpdate = Partial<Pick<
   CycleSettingsRow,
-  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'ttc_features_enabled' | 'reminder_enabled' | 'reminder_days_before'
+  'tracking_enabled' | 'birth_control_tracking_enabled' | 'intimacy_tracking_enabled' | 'ttc_features_enabled' | 'reminder_enabled' | 'reminder_days_before' | 'typical_cycle_length_days'
 >>;
 
 export type BirthControlMethod = 'pill' | 'iud' | 'implant' | 'injection' | 'ring' | 'patch' | 'barrier' | 'fertility_awareness' | 'other' | 'prefer_not_to_specify';
@@ -122,13 +123,16 @@ async function authenticatedUserId(client: CycleDataClient): Promise<string> {
 }
 
 function validateCycleSettingsUpdate(values: CycleSettingsUpdate) {
-  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled', 'reminder_days_before'];
+  const supported = ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled', 'reminder_days_before', 'typical_cycle_length_days'];
   for (const key of Object.keys(values)) {
     if (!supported.includes(key)) throw new Error(`Unsupported cycle setting: ${key}`);
   }
   for (const key of ['tracking_enabled', 'birth_control_tracking_enabled', 'intimacy_tracking_enabled', 'ttc_features_enabled', 'reminder_enabled'] as const) {
     if (key in values && typeof values[key] !== 'boolean') throw new Error(`${key} must be a boolean.`);
   }
+  const cycleLength = values.typical_cycle_length_days;
+  if (cycleLength !== undefined && cycleLength !== null && (!Number.isInteger(cycleLength) || cycleLength < 15 || cycleLength > 180))
+    throw new Error('typical_cycle_length_days must be null or an integer between 15 and 180.');
   const reminderDays = values.reminder_days_before;
   if (reminderDays !== undefined && (!Number.isInteger(reminderDays) || reminderDays < 1 || reminderDays > 14))
     throw new Error('reminder_days_before must be an integer between 1 and 14.');
